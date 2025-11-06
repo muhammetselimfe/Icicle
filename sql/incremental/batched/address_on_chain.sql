@@ -1,5 +1,5 @@
 -- Address to Chain mapping (incremental index)
--- Parameters: chain_id, first_period, last_period
+-- Parameters: chain_id, first_block, last_block
 --
 -- Stores unique (address, chain_id) pairs for cross-chain address tracking.
 -- Primary query: "SELECT DISTINCT chain_id FROM address_on_chain FINAL WHERE address = ?"
@@ -26,8 +26,8 @@ FROM (
     SELECT from as address
     FROM raw_traces
     WHERE chain_id = {chain_id:UInt32}
-      AND block_time >= {first_period:DateTime}
-      AND block_time < {last_period:DateTime}
+      AND block_number >= {first_block:UInt64}
+      AND block_number <= {last_block:UInt64}
       AND from != unhex('0000000000000000000000000000000000000000')
     
     UNION ALL
@@ -35,8 +35,8 @@ FROM (
     SELECT to as address
     FROM raw_traces
     WHERE chain_id = {chain_id:UInt32}
-      AND block_time >= {first_period:DateTime}
-      AND block_time < {last_period:DateTime}
+      AND block_number >= {first_block:UInt64}
+      AND block_number <= {last_block:UInt64}
       AND to IS NOT NULL
       AND to != unhex('0000000000000000000000000000000000000000')
 )

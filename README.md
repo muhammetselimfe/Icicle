@@ -151,17 +151,25 @@ For a GUI interface, connect to ClickHouse using DBeaver:
 
 DBeaver provides a rich interface for exploring tables, writing queries, and visualizing results.
 
-## Metrics & Analytics
+## Indexers & Analytics
 
-For detailed information about available metrics, aggregated tables, and analytical queries, see:
+The system supports three types of indexers:
 
-**[sql/metrics/README.md](sql/metrics/README.md)**
+1. **Granular Metrics** (time-based) - `sql/metrics/` - Hour/day/week/month aggregations
+2. **Batched Incremental** (block-based) - `sql/incremental/batched/` - Runs max once per 5 minutes
+3. **Immediate Incremental** (block-based) - `sql/incremental/immediate/` - Runs every batch with 0.9s spacing
+
+For detailed information about granular metrics, see: **[sql/metrics/README.md](sql/metrics/README.md)**
 
 
 ## Architecture
 
 - **Raw Tables**: Store blockchain data as-is (`raw_blocks`, `raw_transactions`, `raw_traces`, `raw_logs`)
-- **Calculated Tables**: Derived metrics and aggregations built from raw data
+- **Indexer Runner**: One per chain, processes three types of indexers:
+  - **Granular Metrics**: Time-based aggregations (hour/day/week/month)
+  - **Batched Incremental**: Block-based indexers, throttled to 5min intervals
+  - **Immediate Incremental**: Block-based indexers, run every batch (0.9s spacing)
+- **Watermarks**: Track progress per indexer in `indexer_watermarks` table
 - **RPC Cache**: Local disk cache to speed up resync (will be removed in production)
 
 ## Troubleshooting
@@ -184,70 +192,40 @@ For detailed information about available metrics, aggregated tables, and analyti
 
 ```bash
 ~ # clickhouse-client "show tables"
-active_addresses_day
-active_addresses_hour
-active_addresses_week
-active_senders_day
-active_senders_hour
-active_senders_week
-avg_gas_price_day
-avg_gas_price_hour
-avg_gas_price_week
-avg_gps_day
-avg_gps_hour
-avg_gps_week
-avg_tps_day
-avg_tps_hour
-avg_tps_week
-contracts_day
-contracts_hour
-contracts_week
-cumulative_addresses_day
-cumulative_addresses_hour
-cumulative_addresses_week
-cumulative_contracts_day
-cumulative_contracts_hour
-cumulative_contracts_week
-cumulative_deployers_day
-cumulative_deployers_hour
-cumulative_deployers_week
-cumulative_tx_count_day
-cumulative_tx_count_hour
-cumulative_tx_count_week
-deployers_day
-deployers_hour
-deployers_week
-fees_paid_day
-fees_paid_hour
-fees_paid_week
-gas_used_day
-gas_used_hour
-gas_used_week
-icm_received_day
-icm_received_hour
-icm_received_week
-icm_sent_day
-icm_sent_hour
-icm_sent_week
-icm_total_day
-icm_total_hour
-icm_total_week
-max_gas_price_day
-max_gas_price_hour
-max_gas_price_week
-max_gps_day
-max_gps_hour
-max_gps_week
-max_tps_day
-max_tps_hour
-max_tps_week
-metric_watermarks
+# Raw data tables
 raw_blocks
 raw_logs
 raw_traces
 raw_transactions
+
+# Watermark tables
+indexer_watermarks
 sync_watermark
-tx_count_day
-tx_count_hour
-tx_count_week
+
+# Incremental indexers
+address_on_chain
+
+# Granular metrics (hour/day/week/month)
+active_addresses_{granularity}
+active_senders_{granularity}
+avg_gas_price_{granularity}
+avg_gps_{granularity}
+avg_tps_{granularity}
+contracts_{granularity}
+cumulative_addresses_{granularity}
+cumulative_contracts_{granularity}
+cumulative_deployers_{granularity}
+cumulative_tx_count_{granularity}
+deployers_{granularity}
+fees_paid_{granularity}
+gas_used_{granularity}
+icm_received_{granularity}
+icm_sent_{granularity}
+icm_total_{granularity}
+max_gas_price_{granularity}
+max_gps_{granularity}
+max_tps_{granularity}
+tx_count_{granularity}
 ```
+
+Note: Each `{granularity}` metric creates 4 tables (one per granularity: hour, day, week, month)

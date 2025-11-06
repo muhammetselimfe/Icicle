@@ -1,6 +1,8 @@
-# Metrics SQL Query Templates
+# Granular Metrics SQL Query Templates
 
-This directory contains SQL templates for computing blockchain metrics at various time granularities. Most metrics are regular (per-period) only, while a few metrics also track cumulative (running total) values.
+This directory contains SQL templates for computing time-based blockchain metrics at various granularities (hour/day/week/month). Most metrics are regular (per-period) only, while a few metrics also track cumulative (running total) values.
+
+These are **granular metrics** - one of three types of indexers in the system. See also: `sql/incremental/batched/` and `sql/incremental/immediate/`.
 
 ## Supported Granularities
 
@@ -11,7 +13,7 @@ This directory contains SQL templates for computing blockchain metrics at variou
 
 ## Template Placeholders
 
-The metrics runner (`pkg/metrics/metrics_runner.go`) replaces these placeholders when executing queries:
+The indexer runner (`pkg/indexer/granular.go`) replaces these placeholders when executing queries:
 
 | Placeholder | Description | Example Replacement |
 |------------|-------------|---------------------|
@@ -203,35 +205,40 @@ ORDER BY period;
 
 This handles variable month lengths correctly (28-31 days) as well as all other granularities.
 
-## Metrics Runner Behavior
+## Indexer Runner Behavior
 
-The metrics runner (`pkg/metrics/metrics_runner.go`):
+The indexer runner (`pkg/indexer/runner.go`) runs one instance per chain:
 
-1. Tracks watermarks per (chain_id, metric_name, granularity)
-2. Monitors latest block time via `OnBlock()` calls
-3. Calculates complete periods using period boundary functions
-4. Executes metric SQL for all complete periods in batch
-5. Updates watermark after successful execution
-6. Processes all granularities for each metric file
+1. Tracks watermarks per (chain_id, indexer_name) in memory, backed by DB
+2. Receives block updates via `OnBlock(blockNum, blockTime)` calls
+3. Runs a 200ms loop checking all indexers
+4. For granular metrics: calculates complete periods using period boundary functions
+5. Executes metric SQL for all complete periods in batch
+6. Updates watermark after successful execution
+7. Processes all 4 granularities (hour/day/week/month) for each metric file
 
 Watermarks are stored in:
 ```sql
-CREATE TABLE IF NOT EXISTS metric_watermarks (
+CREATE TABLE IF NOT EXISTS indexer_watermarks (
     chain_id UInt32,
-    metric_name String,        -- e.g., "tx_count_hour"
-    last_period DateTime64(3, 'UTC'),
+    indexer_name String,        -- e.g., "metrics/tx_count_hour", "incremental/batched/address_on_chain"
+    last_period DateTime64(3, 'UTC'),      -- For granular metrics
+    last_block_num UInt64,                 -- For incremental indexers
     updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
 ) ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (chain_id, metric_name)
+ORDER BY (chain_id, indexer_name)
 ```
 
-## Adding New Metrics
+## Adding New Granular Metrics
 
-1. Create `metric_name.sql` in this directory
+1. Create `metric_name.sql` in this directory (`sql/metrics/`)
 2. Follow the standard structure (regular + cumulative if applicable)
 3. Use all required placeholders correctly
 4. Test with multiple granularities
 5. Verify idempotency (running twice produces same result)
+6. Restart the indexer - it auto-discovers new SQL files on startup
+
+For incremental (non-time-based) indexers, see `sql/incremental/batched/` and `sql/incremental/immediate/`
 
 ### Example: Simple Count Metric
 
