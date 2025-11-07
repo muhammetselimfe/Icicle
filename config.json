@@ -3,7 +3,7 @@
         "chainID": 43114,
         "rpcURL": "http://localhost:9650/ext/bc/C/rpc",
         "startBlock": 1,
-        "fetchBatchSize": 100,
+        "fetchBatchSize": 50,
         "maxConcurrency": 128
     }
 ]
