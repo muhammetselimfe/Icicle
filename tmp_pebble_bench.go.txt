@@ -1,0 +1,86 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"math"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/cockroachdb/pebble/v2"
+)
+
+func formatBlockKey(blockNum int64) []byte {
+	padded := fmt.Sprintf("%014d", blockNum)
+	return []byte("block:" + padded)
+}
+
+func main() {
+	db, err := pebble.Open("./rpc_cache/43114/", &pebble.Options{
+		ReadOnly: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	const maxBlock = 10_000_000
+	const duration = 5 * time.Second
+	const numGoroutines = 64
+
+	var totalBytes atomic.Int64
+	var readCount atomic.Int64
+	var notFoundCount atomic.Int64
+
+	var wg sync.WaitGroup
+	start := time.Now()
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)))
+
+			for time.Since(start) < duration {
+				blockNum := rng.Int63n(maxBlock) + 1
+				key := formatBlockKey(blockNum)
+
+				value, closer, err := db.Get(key)
+				if err == pebble.ErrNotFound {
+					notFoundCount.Add(1)
+					continue
+				}
+				if err != nil {
+					log.Printf("Error reading block %d: %v", blockNum, err)
+					continue
+				}
+
+				// Do something with the data so optimizer doesn't throw it away
+				var localSum int64
+				for i := 0; i < int(math.Min(float64(len(value)), 1024)); i++ {
+					localSum += int64(value[i])
+				}
+				totalBytes.Add(localSum)
+
+				closer.Close()
+				readCount.Add(1)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	reads := readCount.Load()
+	readsPerSec := float64(reads) / elapsed.Seconds()
+
+	fmt.Printf("Goroutines: %d\n", numGoroutines)
+	fmt.Printf("Duration: %v\n", elapsed)
+	fmt.Printf("Total reads: %d\n", reads)
+	fmt.Printf("Not found: %d\n", notFoundCount.Load())
+	fmt.Printf("Reads per second: %.2f\n", readsPerSec)
+	fmt.Printf("Total bytes processed: %d (checksum)\n", totalBytes.Load())
+}
