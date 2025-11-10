@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { createClient } from '@clickhouse/client-web';
 import PageTransition from '../components/PageTransition';
@@ -11,6 +11,24 @@ const clickhouse = createClient({
 });
 
 const PAGE_SIZE = 200;
+const STORAGE_KEY = 'customSqlQuery';
+
+const EXAMPLE_QUERY = `-- USDC Transfer events by week
+-- address: 0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e (USDC on Avalanche C-Chain)
+-- topic0: Transfer(address,address,uint256) event signature
+SELECT 
+  toStartOfWeek(block_time) as week,
+  count(*) as transfer_count,
+  uniq(tx_from) as unique_senders,
+  -- Decode transfer amount from data field (already binary, UInt256 big-endian)
+  formatReadableQuantity(round(sum(reinterpretAsUInt256(reverse(data)) / 1000000.0), 2)) as total_amount_usdc
+FROM raw_logs
+WHERE chain_id = 43114
+  AND address = unhex('b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e')
+  AND topic0 = unhex('ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef')
+  AND block_time >= '2025-06-01'
+GROUP BY week
+ORDER BY week DESC`;
 
 interface QueryResult {
   columns: string[];
@@ -24,9 +42,16 @@ interface QueryResult {
 }
 
 function CustomSQL() {
-  const [query, setQuery] = useState('SELECT count(distinct(from)) FROM raw_traces where chain_id = 43114');
+  const [query, setQuery] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved || EXAMPLE_QUERY;
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [result, setResult] = useState<QueryResult | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, query);
+  }, [query]);
 
   const { mutate: executeQuery, isPending, error } = useMutation({
     mutationFn: async (sqlQuery: string) => {
@@ -112,7 +137,7 @@ function CustomSQL() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full h-32 px-4 py-3 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
+              className="w-full h-88 px-4 py-3 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
               placeholder="Enter your SQL query here..."
             />
             <p className="text-xs text-gray-500">
@@ -238,16 +263,27 @@ function CustomSQL() {
                       key={rowIndex}
                       className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                     >
-                      {result.columns.map((column) => (
-                        <td
-                          key={column}
-                          className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"
-                        >
-                          {row[column] !== null && row[column] !== undefined
-                            ? String(row[column])
-                            : <span className="text-gray-400 italic">null</span>}
-                        </td>
-                      ))}
+                      {result.columns.map((column) => {
+                        const value = row[column];
+                        let displayValue: React.ReactNode;
+
+                        if (value === null || value === undefined) {
+                          displayValue = <span className="text-gray-400 italic">null</span>;
+                        } else if (typeof value === 'number' && !isNaN(value)) {
+                          displayValue = value.toLocaleString();
+                        } else {
+                          displayValue = String(value);
+                        }
+
+                        return (
+                          <td
+                            key={column}
+                            className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"
+                          >
+                            {displayValue}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
