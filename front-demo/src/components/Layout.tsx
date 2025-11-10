@@ -5,9 +5,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 function Layout() {
   const location = useLocation();
   const menuItems = [
-    { path: '/metrics', label: 'Metrics', icon: BarChart3 },
-    { path: '/custom-sql', label: 'Custom SQL', icon: FileCode },
-    { path: '/sync-status', label: 'Sync status', icon: RefreshCw },
+    { path: '/metrics/43114/hour', pathPrefix: '/metrics', label: 'Metrics', icon: BarChart3 },
+    { path: '/custom-sql', pathPrefix: '/custom-sql', label: 'Custom SQL', icon: FileCode },
+    { path: '/sync-status', pathPrefix: '/sync-status', label: 'Sync status', icon: RefreshCw },
   ];
 
   return (
@@ -17,7 +17,7 @@ function Layout() {
         <nav className="bg-white/70 backdrop-blur-xl rounded-full shadow-lg shadow-black/5 border border-gray-200/50 px-2 py-2">
           <ul className="flex items-center gap-1 relative">
             {menuItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = location.pathname.startsWith(item.pathPrefix);
               return (
                 <li key={item.path} className="relative">
                   {isActive && (

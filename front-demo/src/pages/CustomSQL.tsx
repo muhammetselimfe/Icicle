@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { createClient } from '@clickhouse/client-web';
 import PageTransition from '../components/PageTransition';
+import AiHelpButton from '../components/AiHelpButton';
 import { Play, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 const clickhouse = createClient({
@@ -23,7 +24,7 @@ interface QueryResult {
 }
 
 function CustomSQL() {
-  const [query, setQuery] = useState('SELECT count(distinct(from)) FROM raw_traces');
+  const [query, setQuery] = useState('SELECT count(distinct(from)) FROM raw_traces where chain_id = 43114');
   const [currentPage, setCurrentPage] = useState(1);
   const [result, setResult] = useState<QueryResult | null>(null);
 
@@ -123,7 +124,7 @@ function CustomSQL() {
             <button
               onClick={handleExecute}
               disabled={isPending || !query.trim()}
-              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
             >
               {isPending ? (
                 <>
@@ -137,6 +138,8 @@ function CustomSQL() {
                 </>
               )}
             </button>
+
+            <AiHelpButton />
 
             {/* Query Stats */}
             {result && result.dbExecutionTime !== undefined && (
@@ -261,7 +264,7 @@ function CustomSQL() {
                   <button
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                     title="First page"
                   >
                     <ChevronsLeft size={18} />
@@ -269,7 +272,7 @@ function CustomSQL() {
                   <button
                     onClick={() => setCurrentPage(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                     title="Previous page"
                   >
                     <ChevronLeft size={18} />
@@ -277,7 +280,7 @@ function CustomSQL() {
                   <button
                     onClick={() => setCurrentPage(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                     title="Next page"
                   >
                     <ChevronRight size={18} />
@@ -285,7 +288,7 @@ function CustomSQL() {
                   <button
                     onClick={() => setCurrentPage(totalPages)}
                     disabled={currentPage === totalPages}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                     title="Last page"
                   >
                     <ChevronsRight size={18} />

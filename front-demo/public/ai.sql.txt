@@ -1,0 +1,281 @@
+-- Blocks table - main block headers
+CREATE TABLE IF NOT EXISTS raw_blocks (
+    chain_id UInt32,  -- Multiple chains in same tables
+    block_number UInt32,
+    hash FixedString(32),  -- 32 bytes
+    parent_hash FixedString(32),
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
+    miner FixedString(20),  -- 20 bytes address
+    difficulty UInt8,  -- Always 1 on PoS chains
+    total_difficulty UInt64,  -- On PoS chains, equals block number, but store for compatibility
+    size UInt32,
+    gas_limit UInt32,
+    gas_used UInt32,
+    base_fee_per_gas UInt64,
+    block_gas_cost UInt64,
+    state_root FixedString(32),
+    transactions_root FixedString(32),
+    receipts_root FixedString(32),
+    extra_data String,
+    block_extra_data String,
+    ext_data_hash FixedString(32),
+    ext_data_gas_used UInt32,
+    mix_hash FixedString(32),
+    nonce LowCardinality(FixedString(8)),  -- 8 bytes, always 0x00...00 on PoS
+    sha3_uncles FixedString(32),
+    uncles Array(FixedString(32)),
+    blob_gas_used UInt32,  -- Always 0 if no blob txs
+    excess_blob_gas UInt64,  -- Always 0 if no blob txs
+    parent_beacon_block_root LowCardinality(FixedString(32))  -- Often all zeros
+) ENGINE = MergeTree()
+ORDER BY (chain_id, block_number);
+
+-- Transactions table - merged with receipts for analytics performance
+CREATE TABLE IF NOT EXISTS raw_txs (
+    chain_id UInt32,  -- Multiple chains in same tables
+    hash FixedString(32),
+    block_number UInt32,
+    block_hash FixedString(32),
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
+    transaction_index UInt16,
+    nonce UInt64,
+    from FixedString(20),
+    to Nullable(FixedString(20)),  -- NULL for contract creation
+    value UInt256,
+    gas_limit UInt32,  -- Renamed from 'gas' for clarity
+    gas_price UInt64,
+    gas_used UInt32,  -- From receipt
+    success Bool,  -- From receipt status
+    input String,  -- Calldata
+    type UInt8,  -- 0,1,2,3 (legacy, EIP-2930, EIP-1559, EIP-4844)
+    max_fee_per_gas Nullable(UInt64),  -- Only for EIP-1559
+    max_priority_fee_per_gas Nullable(UInt64),  -- Only for EIP-1559
+    priority_fee_per_gas Nullable(UInt64),  -- Computed: min(gas_price - base_fee, max_priority_fee)
+    base_fee_per_gas UInt64,  -- Denormalized from blocks for easier queries
+    contract_address Nullable(FixedString(20)),  -- From receipt if contract creation
+    access_list Array(Tuple(
+        address FixedString(20),
+        storage_keys Array(FixedString(32))
+    ))  -- Properly structured, not JSON
+) ENGINE = MergeTree()
+ORDER BY (chain_id, block_number);
+
+-- Traces table - flattened trace calls
+CREATE TABLE IF NOT EXISTS raw_traces (
+    chain_id UInt32,  -- Multiple chains in same tables
+    tx_hash FixedString(32),
+    block_number UInt32,
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
+    transaction_index UInt16,
+    trace_address Array(UInt16),  -- Path in call tree, e.g. [0,2,1] = first call -> third subcall -> second subcall
+    from FixedString(20),
+    to Nullable(FixedString(20)),  -- NULL for certain call types
+    gas UInt32,
+    gas_used UInt32,
+    value UInt256,
+    input String,
+    output String,
+    call_type LowCardinality(String),  -- CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2, etc.
+    tx_success Bool,  -- Transaction success status (denormalized from raw_txs)
+    tx_from FixedString(20),  -- Original transaction sender (denormalized)
+    tx_to Nullable(FixedString(20))  -- Original transaction target (denormalized)
+) ENGINE = MergeTree()
+ORDER BY (chain_id, block_number);
+
+-- Logs table - event logs emitted by smart contracts
+CREATE TABLE IF NOT EXISTS raw_logs (
+    chain_id UInt32,  -- Multiple chains in same tables
+    address FixedString(20),
+    block_number UInt32,
+    block_hash FixedString(32),  -- Needed for reorg detection and data integrity
+    block_time DateTime64(3, 'UTC'),  -- Millisecond precision, UTC timezone
+    transaction_hash FixedString(32),
+    transaction_index UInt16,
+    log_index UInt32,
+    tx_from FixedString(20),  -- Denormalized from transactions for faster queries
+    tx_to Nullable(FixedString(20)),  -- Denormalized from transactions
+    topic0 FixedString(32),  -- Event signature hash (empty for rare anonymous events)
+    topic1 Nullable(FixedString(32)),
+    topic2 Nullable(FixedString(32)),
+    topic3 Nullable(FixedString(32)),
+    data String,  -- Non-indexed event data
+    removed Bool  -- TODO: check if ever happen to be true
+) ENGINE = MergeTree()
+ORDER BY (chain_id, block_time, address, topic0);
+
+-- Single unified metrics table for all metric types and granularities
+CREATE TABLE IF NOT EXISTS metrics (
+    chain_id UInt32,
+    metric_name LowCardinality(String),  -- e.g., "active_addresses", "cumulative_addresses", "contracts", "cumulative_contracts", "icm_sent"
+    granularity LowCardinality(String),  -- e.g., "hour", "day", "week", "month"
+    period DateTime64(3, 'UTC'),         -- Period start time
+    value UInt64,
+    computed_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(computed_at)
+ORDER BY (chain_id, metric_name, granularity, period)
+PARTITION BY (chain_id, toYYYYMM(period));
+
+-- Watermark table - tracks guaranteed sync progress per chain
+CREATE TABLE IF NOT EXISTS sync_watermark (
+    chain_id UInt32,
+    block_number UInt32
+) ENGINE = EmbeddedRocksDB
+PRIMARY KEY chain_id;
+
+-- Chain status table - tracks chain metadata and RPC connectivity
+CREATE TABLE IF NOT EXISTS chain_status (
+    chain_id UInt32,
+    name String,
+    last_updated DateTime64(3, 'UTC'),
+    last_block_on_chain UInt64
+) ENGINE = ReplacingMergeTree(last_updated)
+PRIMARY KEY chain_id;
+
+
+
+-- Example Queries for AI Training
+-- Raw tables: raw_blocks, raw_txs, raw_traces, raw_logs
+
+-- Example 1: Count transactions per hour on a specific chain
+SELECT 
+    toStartOfHour(block_time) as hour,
+    count(*) as tx_count
+FROM raw_txs
+WHERE chain_id = 43114
+  AND block_time >= '2025-06-01'
+GROUP BY hour
+ORDER BY hour;
+
+-- Example 2: Detect ICM sent messages using topic0 hash (platform-specific)
+SELECT 
+    block_number,
+    block_time,
+    address as contract_address,
+    transaction_hash,
+    log_index
+FROM raw_logs
+WHERE chain_id = 43114
+  AND topic0 = unhex('2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8')
+  AND block_time >= '2025-06-01'
+ORDER BY block_time;
+
+-- Example 3: Detect ICM received messages using topic0 hash (platform-specific)
+SELECT 
+    toStartOfDay(block_time) as day,
+    count(*) as receive_count
+FROM raw_logs
+WHERE chain_id = 43114
+  AND topic0 = unhex('292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34')
+  AND block_time >= '2025-06-01'
+GROUP BY day
+ORDER BY day;
+
+-- Example 4: Calculate total gas used per day
+SELECT 
+    toStartOfDay(block_time) as day,
+    sum(gas_used) as total_gas_used
+FROM raw_txs
+WHERE chain_id = 43114
+  AND block_time >= '2025-06-01'
+GROUP BY day
+ORDER BY day;
+
+-- Example 5: Find contract deployments (transactions where 'to' is NULL)
+SELECT 
+    block_number,
+    block_time,
+    hash as tx_hash,
+    from as deployer,
+    contract_address
+FROM raw_txs
+WHERE chain_id = 43114
+  AND to IS NULL
+  AND success = true
+  AND block_time >= '2025-06-01'
+ORDER BY block_time;
+
+-- Example 6: Count unique senders (from addresses) per day
+SELECT 
+    toStartOfDay(block_time) as day,
+    uniq(from) as unique_senders
+FROM raw_txs
+WHERE chain_id = 43114
+  AND block_time >= '2025-06-01'
+GROUP BY day
+ORDER BY day;
+
+-- Example 7: Calculate average and max gas price per hour
+SELECT 
+    toStartOfHour(block_time) as hour,
+    avg(gas_price) as avg_gas_price,
+    max(gas_price) as max_gas_price
+FROM raw_txs
+WHERE chain_id = 43114
+  AND block_time >= '2025-06-01'
+GROUP BY hour
+ORDER BY hour;
+
+-- Example 8: Find all events from a specific contract address
+SELECT 
+    block_number,
+    block_time,
+    transaction_hash,
+    topic0,
+    topic1,
+    topic2,
+    topic3,
+    data
+FROM raw_logs
+WHERE chain_id = 43114
+  AND address = unhex('1234567890123456789012345678901234567890')
+  AND block_time >= '2025-06-01'
+ORDER BY block_number, log_index;
+
+-- Example 9: Calculate total value transferred (native token UInt256) per day
+SELECT 
+    toStartOfDay(block_time) as day,
+    sum(value) as total_value_transferred
+FROM raw_txs
+WHERE chain_id = 43114
+  AND block_time >= '2025-06-01'
+  AND value > 0
+GROUP BY day
+ORDER BY day;
+
+-- Example 10: Count CREATE, CREATE2, CREATE3 calls from traces (call_type filtering)
+SELECT 
+    toStartOfDay(block_time) as day,
+    call_type,
+    count(*) as create_count
+FROM raw_traces
+WHERE chain_id = 43114
+  AND call_type IN ('CREATE', 'CREATE2', 'CREATE3')
+  AND block_time >= '2025-06-01'
+GROUP BY day, call_type
+ORDER BY day, call_type;
+
+-- Bonus: ICM total messages (sent + received, multiple topic0 values)
+SELECT 
+    toStartOfWeek(block_time) as week,
+    count(*) as total_icm_messages
+FROM raw_logs
+WHERE chain_id = 43114
+  AND topic0 IN (
+    unhex('2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8'), -- SEND
+    unhex('292ee90bbaf70b5d4936025e09d56ba08f3e421156b6a568cf3c2840d9343e34')  -- RECEIVE
+  )
+  AND block_time >= '2025-06-01'
+GROUP BY week
+ORDER BY week;
+
+-- Key patterns:
+-- 1. Always filter by chain_id for multi-chain tables
+-- 2. Use block_time for time-based filtering (DateTime64(3, 'UTC'))
+-- 3. Use >= for time filtering (inclusive)
+-- 4. Use toStartOfHour/Day/Week/Month for time bucketing
+-- 5. ICM events detected by specific topic0 hashes (use unhex())
+-- 6. Contract deployments: to IS NULL in raw_txs
+-- 7. Address fields are FixedString(20), use unhex() for literals
+-- 8. Hash fields are FixedString(32), use unhex() for literals
+-- 9. Use uniq() for unique counting
+-- 10. call_type in raw_traces is LowCardinality(String)

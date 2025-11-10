@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useParams, useNavigate } from 'react-router-dom';
 import { createClient } from '@clickhouse/client-web';
 import PageTransition from '../components/PageTransition';
 import MetricChart from '../components/MetricChart';
@@ -33,8 +33,11 @@ const GRANULARITIES: { value: Granularity; label: string }[] = [
 ];
 
 function Metrics() {
-  const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
-  const [selectedGranularity, setSelectedGranularity] = useState<Granularity>('hour');
+  const { chainId, granularity } = useParams<{ chainId: string; granularity: string }>();
+  const navigate = useNavigate();
+
+  const selectedChainId = chainId ? parseInt(chainId) : 43114;
+  const selectedGranularity = (granularity as Granularity) || 'hour';
 
   const { data: chains, isLoading, error } = useQuery<Chain[]>({
     queryKey: ['chains'],
@@ -46,12 +49,13 @@ function Metrics() {
       const data = await result.json<Chain>();
       return data as Chain[];
     },
+    staleTime: Infinity,
+    gcTime: Infinity,
   });
 
   const { data: metrics, isLoading: isLoadingMetrics, error: metricsError } = useQuery<MetricData[]>({
     queryKey: ['metrics', selectedChainId, selectedGranularity],
     queryFn: async () => {
-      if (!selectedChainId) return [];
       const result = await clickhouse.query({
         query: `SELECT chain_id, metric_name, granularity, period, value, computed_at 
                 FROM metrics 
@@ -62,14 +66,7 @@ function Metrics() {
       const data = await result.json<MetricData>();
       return data as MetricData[];
     },
-    enabled: !!selectedChainId,
   });
-
-  useEffect(() => {
-    if (chains && chains.length > 0 && selectedChainId === null) {
-      setSelectedChainId(chains[0].chain_id);
-    }
-  }, [chains, selectedChainId]);
 
   const metricsByName = metrics?.reduce((acc, metric) => {
     if (!acc[metric.metric_name]) {
@@ -104,7 +101,7 @@ function Metrics() {
                   return (
                     <button
                       key={chain.chain_id}
-                      onClick={() => setSelectedChainId(chain.chain_id)}
+                      onClick={() => navigate(`/metrics/${chain.chain_id}/${selectedGranularity}`)}
                       className={`w-full flex items-center gap-3 p-3 border rounded-lg transition-all text-left cursor-pointer ${isSelected
                         ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                         : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
@@ -137,7 +134,7 @@ function Metrics() {
                 return (
                   <button
                     key={granularity.value}
-                    onClick={() => setSelectedGranularity(granularity.value)}
+                    onClick={() => navigate(`/metrics/${selectedChainId}/${granularity.value}`)}
                     className={`p-3 border rounded-lg transition-all font-medium cursor-pointer ${isSelected
                       ? 'border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-200'
                       : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700'
