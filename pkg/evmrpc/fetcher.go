@@ -1,8 +1,8 @@
-package rpc
+package evmrpc
 
 import (
 	"bytes"
-	"clickhouse-metrics-poc/pkg/ingest/cache"
+	"clickhouse-metrics-poc/pkg/cache"
 	"encoding/json"
 	"fmt"
 	"net"

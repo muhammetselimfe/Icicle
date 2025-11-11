@@ -1,7 +1,7 @@
-package syncer
+package evmsyncer
 
 import (
-	"clickhouse-metrics-poc/pkg/ingest/rpc"
+	"clickhouse-metrics-poc/pkg/evmrpc"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -142,13 +142,13 @@ func computePriorityFee(gasPrice, baseFee, maxPriority uint64) uint64 {
 }
 
 // InsertBlocks inserts block data into the blocks table
-func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
+func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*evmrpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
 	// Filter out blocks already in the table
-	var filteredBlocks []*rpc.NormalizedBlock
+	var filteredBlocks []*evmrpc.NormalizedBlock
 	for _, b := range blocks {
 		blockNum, err := hexToUint32(b.Block.Number)
 		if err != nil {
@@ -346,13 +346,13 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 }
 
 // InsertTransactions inserts transaction data merged with receipts into the transactions table
-func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
+func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*evmrpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
 	// Filter out blocks already in the table
-	var filteredBlocks []*rpc.NormalizedBlock
+	var filteredBlocks []*evmrpc.NormalizedBlock
 	for _, b := range blocks {
 		blockNum, err := hexToUint32(b.Block.Number)
 		if err != nil {
@@ -602,7 +602,7 @@ type FlattenedTrace struct {
 }
 
 // flattenTrace recursively flattens a CallTrace into multiple FlattenedTrace entries
-func flattenTrace(trace *rpc.CallTrace, txHash string, blockNum uint32, blockTime time.Time,
+func flattenTrace(trace *evmrpc.CallTrace, txHash string, blockNum uint32, blockTime time.Time,
 	txIndex uint16, address []uint16, txSuccess bool, txFrom []byte, txTo any) ([]FlattenedTrace, error) {
 
 	if trace == nil {
@@ -692,13 +692,13 @@ func flattenTrace(trace *rpc.CallTrace, txHash string, blockNum uint32, blockTim
 }
 
 // InsertTraces inserts trace data into the traces table
-func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
+func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*evmrpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
 	// Filter out blocks already in the table
-	var filteredBlocks []*rpc.NormalizedBlock
+	var filteredBlocks []*evmrpc.NormalizedBlock
 	for _, b := range blocks {
 		blockNum, err := hexToUint32(b.Block.Number)
 		if err != nil {
@@ -820,13 +820,13 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 }
 
 // InsertLogs inserts log data into the logs table
-func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*rpc.NormalizedBlock, maxBlock uint32) error {
+func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, blocks []*evmrpc.NormalizedBlock, maxBlock uint32) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
 	// Filter out blocks already in the table
-	var filteredBlocks []*rpc.NormalizedBlock
+	var filteredBlocks []*evmrpc.NormalizedBlock
 	for _, b := range blocks {
 		blockNum, err := hexToUint32(b.Block.Number)
 		if err != nil {

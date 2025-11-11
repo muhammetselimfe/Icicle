@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"clickhouse-metrics-poc/pkg/cache"
 	"clickhouse-metrics-poc/pkg/chwrapper"
-	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/syncer"
+	"clickhouse-metrics-poc/pkg/evmsyncer"
 	"encoding/json"
 	"log"
 	"os"
@@ -77,7 +77,7 @@ func RunIngest() {
 		// }(cacheInstance, cfg.ChainID)
 
 		// Create syncer
-		chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
+		chainSyncer, err := evmsyncer.NewChainSyncer(evmsyncer.Config{
 			ChainID:        cfg.ChainID,
 			RpcURL:         cfg.RpcURL,
 			StartBlock:     cfg.StartBlock,
@@ -92,7 +92,7 @@ func RunIngest() {
 		}
 
 		wg.Add(1)
-		go func(cs *syncer.ChainSyncer, chainID uint32) {
+		go func(cs *evmsyncer.ChainSyncer, chainID uint32) {
 			defer wg.Done()
 			if err := cs.Start(); err != nil {
 				log.Printf("Failed to start syncer for chain %d: %v", chainID, err)

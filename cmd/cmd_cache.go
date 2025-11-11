@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/rpc"
+	"clickhouse-metrics-poc/pkg/cache"
+	"clickhouse-metrics-poc/pkg/evmrpc"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -86,7 +86,7 @@ func runChainCache(cfg CacheConfig) error {
 
 	log.Printf("[Chain %d] Creating fetcher with concurrency=%d, batchSize=%d",
 		cfg.ChainID, cfg.MaxConcurrency, cfg.FetchBatchSize)
-	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
+	fetcher := evmrpc.NewFetcher(evmrpc.FetcherOptions{
 		RpcURL:         cfg.RpcURL,
 		MaxConcurrency: cfg.MaxConcurrency,
 		MaxRetries:     100,

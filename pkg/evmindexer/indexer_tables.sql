@@ -13,7 +13,7 @@ PARTITION BY (chain_id, toYYYYMM(period));
 -- Unified watermark table for tracking indexer progress
 CREATE TABLE IF NOT EXISTS indexer_watermarks (
     chain_id UInt32,
-    indexer_name String,  -- e.g., "metrics/active_addresses", "incremental/batched/address_on_chain"
+    indexer_name String,  -- e.g., "evm_metrics/active_addresses", "evm_incremental/batched/address_on_chain"
     granularity LowCardinality(String),  -- For metrics: "hour", "day", etc. Empty for incrementals
     
     -- For granular metrics (time-based)
