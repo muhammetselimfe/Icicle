@@ -1,15 +1,18 @@
-package indexer
+package evmindexer
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
+
+//go:embed indexer_tables.sql
+var indexerTablesSQL string
 
 // IndexRunner processes indexers for a single chain
 type IndexRunner struct {
@@ -36,14 +39,8 @@ type IndexRunner struct {
 // NewIndexRunner creates a new indexer runner for a single chain
 func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string) (*IndexRunner, error) {
 	// Create tables from indexer_tables.sql (metrics and indexer_watermarks)
-	indexerTablesSQLPath := filepath.Join(filepath.Dir(sqlDir), "pkg", "indexer", "indexer_tables.sql")
-	sqlBytes, err := os.ReadFile(indexerTablesSQLPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read indexer_tables.sql: %w", err)
-	}
-
 	// Execute each CREATE TABLE statement
-	statements := splitSQL(string(sqlBytes))
+	statements := splitSQL(indexerTablesSQL)
 	for _, stmt := range statements {
 		if strings.TrimSpace(stmt) == "" {
 			continue
@@ -85,19 +82,19 @@ func (r *IndexRunner) discoverIndexers() error {
 	var err error
 
 	// Discover granular metrics
-	r.granularMetrics, err = discoverSQLFiles(filepath.Join(r.sqlDir, "metrics"))
+	r.granularMetrics, err = discoverSQLFiles(filepath.Join(r.sqlDir, "evm_metrics"))
 	if err != nil {
 		return err
 	}
 
 	// Discover batched incrementals
-	r.batchedIndexers, err = discoverSQLFiles(filepath.Join(r.sqlDir, "incremental/batched"))
+	r.batchedIndexers, err = discoverSQLFiles(filepath.Join(r.sqlDir, "evm_incremental/batched"))
 	if err != nil {
 		return err
 	}
 
 	// Discover immediate incrementals
-	r.immediateIndexers, err = discoverSQLFiles(filepath.Join(r.sqlDir, "incremental/immediate"))
+	r.immediateIndexers, err = discoverSQLFiles(filepath.Join(r.sqlDir, "evm_incremental/immediate"))
 	if err != nil {
 		return err
 	}

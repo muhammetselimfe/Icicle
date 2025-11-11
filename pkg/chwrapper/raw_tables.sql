@@ -119,3 +119,75 @@ CREATE TABLE IF NOT EXISTS chain_status (
 ) ENGINE = ReplacingMergeTree(last_updated)
 PRIMARY KEY chain_id;
 
+-- P-chain transactions table - all P-chain transaction types in one table
+CREATE TABLE IF NOT EXISTS p_chain_txs (
+    tx_id FixedString(32),
+    tx_type LowCardinality(String),
+    block_number UInt64,
+    block_time DateTime64(3, 'UTC'),
+    
+    -- Validator fields (nullable, used by AddValidator, AddDelegator, etc.)
+    node_id Nullable(FixedString(20)),
+    start_time Nullable(UInt64),
+    end_time Nullable(UInt64),
+    weight Nullable(UInt64),
+    
+    -- Subnet fields
+    subnet_id Nullable(FixedString(32)),
+    chain_id Nullable(FixedString(32)),
+    
+    -- ConvertSubnetToL1Tx specific
+    address Nullable(FixedString(20)),
+    validators String,  -- JSON-encoded validator list
+    
+    -- CreateSubnetTx / TransferSubnetOwnershipTx
+    owner String,  -- JSON-encoded owner structure
+    
+    -- CreateChainTx specific
+    chain_name String,
+    genesis_data String,
+    vm_id Nullable(FixedString(32)),
+    fx_ids String,  -- JSON-encoded array of IDs
+    subnet_auth String,  -- JSON-encoded subnet authorization
+    
+    -- ImportTx / ExportTx
+    source_chain Nullable(FixedString(32)),
+    destination_chain Nullable(FixedString(32)),
+    
+    -- RewardValidatorTx
+    reward_tx_id Nullable(FixedString(32)),
+    
+    -- TransformSubnetTx specific
+    asset_id Nullable(FixedString(32)),
+    initial_supply Nullable(UInt64),
+    max_supply Nullable(UInt64),
+    min_consumption_rate Nullable(UInt64),
+    max_consumption_rate Nullable(UInt64),
+    min_validator_stake Nullable(UInt64),
+    max_validator_stake Nullable(UInt64),
+    min_stake_duration Nullable(UInt32),
+    max_stake_duration Nullable(UInt32),
+    min_delegation_fee Nullable(UInt32),
+    min_delegator_stake Nullable(UInt64),
+    max_validator_weight_factor Nullable(UInt8),
+    uptime_requirement Nullable(UInt32),
+    
+    -- AddPermissionlessValidatorTx / AddPermissionlessDelegatorTx
+    signer String,  -- JSON-encoded signer
+    stake_outs String,  -- JSON-encoded stake outputs
+    validator_rewards_owner String,  -- JSON-encoded rewards owner
+    delegator_rewards_owner String,  -- JSON-encoded rewards owner
+    delegation_shares Nullable(UInt32),
+    
+    -- IncreaseL1ValidatorBalanceTx
+    validation_id Nullable(FixedString(32)),
+    balance Nullable(UInt64),
+    
+    -- SetL1ValidatorWeightTx
+    message String,  -- Warp message with SetL1ValidatorWeight
+    
+    -- AdvanceTimeTx
+    time Nullable(UInt64)  -- Unix time this block proposes increasing the timestamp to
+) ENGINE = MergeTree()
+ORDER BY (block_time, block_number, tx_type);
+

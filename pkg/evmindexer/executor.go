@@ -1,4 +1,4 @@
-package indexer
+package evmindexer
 
 import (
 	"context"
@@ -110,4 +110,3 @@ func discoverSQLFiles(dir string) ([]string, error) {
 
 	return sqlFiles, nil
 }
-

@@ -1,10 +1,10 @@
-package syncer
+package evmsyncer
 
 import (
+	"clickhouse-metrics-poc/pkg/cache"
 	"clickhouse-metrics-poc/pkg/chwrapper"
-	"clickhouse-metrics-poc/pkg/indexer"
-	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/rpc"
+	"clickhouse-metrics-poc/pkg/evmindexer"
+	"clickhouse-metrics-poc/pkg/evmrpc"
 	"context"
 	"fmt"
 	"log"
@@ -38,11 +38,11 @@ type Config struct {
 type ChainSyncer struct {
 	chainId        uint32
 	chainName      string
-	fetcher        *rpc.Fetcher
+	fetcher        *evmrpc.Fetcher
 	conn           driver.Conn
-	blockChan      chan []*rpc.NormalizedBlock // Bounded channel for backpressure
-	watermark      uint32                      // Current sync position
-	startBlock     int64                       // Starting block when no watermark
+	blockChan      chan []*evmrpc.NormalizedBlock // Bounded channel for backpressure
+	watermark      uint32                         // Current sync position
+	startBlock     int64                          // Starting block when no watermark
 	fetchBatchSize int
 	flushInterval  time.Duration
 
@@ -64,7 +64,7 @@ type ChainSyncer struct {
 	startTime     time.Time
 
 	// Indexer runner (one per chain)
-	indexerRunner *indexer.IndexRunner
+	indexerRunner *evmindexer.IndexRunner
 }
 
 // NewChainSyncer creates a new chain syncer
@@ -80,7 +80,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	}
 
 	// Create fetcher
-	fetcher := rpc.NewFetcher(rpc.FetcherOptions{
+	fetcher := evmrpc.NewFetcher(evmrpc.FetcherOptions{
 		RpcURL:         cfg.RpcURL,
 		MaxConcurrency: cfg.MaxConcurrency,
 		MaxRetries:     100,
@@ -97,7 +97,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		chainName:      cfg.Name,
 		fetcher:        fetcher,
 		conn:           cfg.CHConn,
-		blockChan:      make(chan []*rpc.NormalizedBlock, BufferSize),
+		blockChan:      make(chan []*evmrpc.NormalizedBlock, BufferSize),
 		startBlock:     cfg.StartBlock,
 		fetchBatchSize: cfg.FetchBatchSize,
 		flushInterval:  FlushInterval,
@@ -108,7 +108,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	}
 
 	// Initialize indexer runner - one per chain
-	indexerRunner, err := indexer.NewIndexRunner(cfg.ChainID, cfg.CHConn, "sql")
+	indexerRunner, err := evmindexer.NewIndexRunner(cfg.ChainID, cfg.CHConn, "sql")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create indexer runner: %w", err)
 	}
@@ -287,7 +287,7 @@ func (cs *ChainSyncer) fetcherLoop(startBlock, latestBlock int64) {
 func (cs *ChainSyncer) writerLoop() {
 	defer cs.wg.Done()
 
-	var buffer []*rpc.NormalizedBlock
+	var buffer []*evmrpc.NormalizedBlock
 	var lastFlushTime time.Time
 	flushTimer := time.NewTimer(cs.flushInterval)
 	defer flushTimer.Stop()
@@ -355,7 +355,7 @@ func (cs *ChainSyncer) writerLoop() {
 }
 
 // writeBlocks writes blocks to all tables in parallel and updates watermark
-func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
+func (cs *ChainSyncer) writeBlocks(blocks []*evmrpc.NormalizedBlock) error {
 	if len(blocks) == 0 {
 		return nil
 	}
@@ -418,7 +418,7 @@ func (cs *ChainSyncer) writeBlocks(blocks []*rpc.NormalizedBlock) error {
 	// Update indexer runner with latest block info (only once per batch)
 	if len(blocks) > 0 {
 		// Find the latest block by number
-		var latestBlock *rpc.NormalizedBlock
+		var latestBlock *evmrpc.NormalizedBlock
 		latestBlockNum := uint32(0)
 		for _, b := range blocks {
 			blockNum, err := hexToUint32(b.Block.Number)

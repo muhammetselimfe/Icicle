@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"clickhouse-metrics-poc/pkg/cache"
 	"clickhouse-metrics-poc/pkg/chwrapper"
-	"clickhouse-metrics-poc/pkg/ingest/cache"
-	"clickhouse-metrics-poc/pkg/ingest/syncer"
+	"clickhouse-metrics-poc/pkg/evmsyncer"
+	"clickhouse-metrics-poc/pkg/pchainsyncer"
 	"encoding/json"
 	"log"
 	"os"
@@ -19,6 +20,12 @@ type ChainConfig struct {
 	Name           string `json:"name"`
 }
 
+type Config struct {
+	EvmChains        []ChainConfig `json:"evmChains,omitempty"`
+	PChainRpcURL     string        `json:"pChainRpcURL,omitempty"`
+	PChainStartBlock int64         `json:"pChainStartBlock,omitempty"`
+}
+
 func RunIngest() {
 	log.Println("Starting ingest...")
 	// Load configuration
@@ -27,17 +34,28 @@ func RunIngest() {
 		log.Fatalf("Failed to read config.json: %v", err)
 	}
 
-	var configs []ChainConfig
-	if err := json.Unmarshal(configData, &configs); err != nil {
+	// Try to parse as new format first
+	var config Config
+	if err := json.Unmarshal(configData, &config); err != nil {
 		log.Fatalf("Failed to parse config.json: %v", err)
 	}
 
-	if len(configs) == 0 {
+	// Support legacy format (array of chain configs)
+	var evmConfigs []ChainConfig
+	if len(config.EvmChains) == 0 && config.PChainRpcURL == "" {
+		// Try parsing as legacy array format
+		if err := json.Unmarshal(configData, &evmConfigs); err != nil {
+			log.Fatalf("Failed to parse config.json as legacy format: %v", err)
+		}
+		config.EvmChains = evmConfigs
+	}
+
+	if len(config.EvmChains) == 0 && config.PChainRpcURL == "" {
 		log.Fatal("No chain configurations found in config.json")
 	}
 
-	// Validate configuration
-	for _, cfg := range configs {
+	// Validate EVM configuration
+	for _, cfg := range config.EvmChains {
 		if cfg.Name == "" {
 			log.Fatalf("Chain %d has empty name - name is required", cfg.ChainID)
 		}
@@ -57,8 +75,49 @@ func RunIngest() {
 
 	var wg sync.WaitGroup
 
-	// Start a syncer for each chain
-	for _, cfg := range configs {
+	// Start P-chain syncer if configured
+	if config.PChainRpcURL != "" {
+		log.Printf("Starting P-chain syncer with RPC URL: %s", config.PChainRpcURL)
+
+		// Create cache for P-chain (using chain ID 0)
+		pChainCache, err := cache.New("./rpc_cache", 0)
+		if err != nil {
+			log.Fatalf("Failed to create cache for P-chain: %v", err)
+		}
+		defer pChainCache.Close()
+
+		// Create P-chain syncer
+		pChainStartBlock := config.PChainStartBlock
+		if pChainStartBlock == 0 {
+			pChainStartBlock = 1 // Default to block 1 if not specified
+		}
+
+		pChainSyncer, err := pchainsyncer.NewPChainSyncer(pchainsyncer.Config{
+			RpcURL:         config.PChainRpcURL,
+			StartBlock:     pChainStartBlock,
+			MaxConcurrency: 50,
+			FetchBatchSize: 100,
+			CHConn:         conn,
+			Cache:          pChainCache,
+		})
+		if err != nil {
+			log.Fatalf("Failed to create P-chain syncer: %v", err)
+		}
+
+		wg.Add(1)
+		go func(ps *pchainsyncer.PChainSyncer) {
+			defer wg.Done()
+			if err := ps.Start(); err != nil {
+				log.Printf("Failed to start P-chain syncer: %v", err)
+			}
+			ps.Wait()
+		}(pChainSyncer)
+
+		log.Printf("Started P-chain syncer")
+	}
+
+	// Start a syncer for each EVM chain
+	for _, cfg := range config.EvmChains {
 		// Create cache
 		cacheInstance, err := cache.New("./rpc_cache", cfg.ChainID)
 		if err != nil {
@@ -77,7 +136,7 @@ func RunIngest() {
 		// }(cacheInstance, cfg.ChainID)
 
 		// Create syncer
-		chainSyncer, err := syncer.NewChainSyncer(syncer.Config{
+		chainSyncer, err := evmsyncer.NewChainSyncer(evmsyncer.Config{
 			ChainID:        cfg.ChainID,
 			RpcURL:         cfg.RpcURL,
 			StartBlock:     cfg.StartBlock,
@@ -92,7 +151,7 @@ func RunIngest() {
 		}
 
 		wg.Add(1)
-		go func(cs *syncer.ChainSyncer, chainID uint32) {
+		go func(cs *evmsyncer.ChainSyncer, chainID uint32) {
 			defer wg.Done()
 			if err := cs.Start(); err != nil {
 				log.Printf("Failed to start syncer for chain %d: %v", chainID, err)

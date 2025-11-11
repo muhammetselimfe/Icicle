@@ -1,4 +1,4 @@
-package indexer
+package evmindexer
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ func (r *IndexRunner) processGranularMetrics() {
 	for _, metricFile := range r.granularMetrics {
 		for _, granularity := range []string{"hour", "day", "week", "month"} {
 			// Use just the metric filename for indexer name, granularity tracked separately
-			indexerName := fmt.Sprintf("metrics/%s", metricFile)
+			indexerName := fmt.Sprintf("evm_metrics/%s", metricFile)
 
 			watermark := r.getWatermarkWithGranularity(indexerName, granularity)
 
@@ -66,6 +66,6 @@ func (r *IndexRunner) runGranularMetric(metricFile string, granularity string, p
 		"last_period":  lastPeriod,
 	}
 
-	filename := fmt.Sprintf("metrics/%s.sql", metricFile)
+	filename := fmt.Sprintf("evm_metrics/%s.sql", metricFile)
 	return executeSQLFile(r.conn, r.sqlDir, filename, templateParams, bindParams)
 }
