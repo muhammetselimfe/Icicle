@@ -271,6 +271,8 @@ function CustomSQL() {
                           displayValue = <span className="text-gray-400 italic">null</span>;
                         } else if (typeof value === 'number' && !isNaN(value)) {
                           displayValue = value.toLocaleString();
+                        } else if (typeof value === 'object') {
+                          displayValue = <pre className="font-mono text-xs">{JSON.stringify(value, null, 2)}</pre>;
                         } else {
                           displayValue = String(value);
                         }

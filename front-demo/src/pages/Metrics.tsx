@@ -104,7 +104,7 @@ function Metrics() {
   return (
     <PageTransition>
       <div className="p-8 space-y-6">
-        <h1 className="text-3xl font-bold text-gray-900">Metrics</h1>
+        <h1 className="text-3xl font-bold text-gray-900">EVM Metrics</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chain Selector */}
@@ -126,7 +126,7 @@ function Metrics() {
                   return (
                     <button
                       key={chain.chain_id}
-                      onClick={() => navigate(`/metrics/${chain.chain_id}/${selectedGranularity}`)}
+                      onClick={() => navigate(`/evm-metrics/${chain.chain_id}/${selectedGranularity}`)}
                       className={`w-full flex items-center gap-3 p-3 border rounded-lg transition-all text-left cursor-pointer ${isSelected
                         ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                         : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
@@ -159,7 +159,7 @@ function Metrics() {
                 return (
                   <button
                     key={granularity.value}
-                    onClick={() => navigate(`/metrics/${selectedChainId}/${granularity.value}`)}
+                    onClick={() => navigate(`/evm-metrics/${selectedChainId}/${granularity.value}`)}
                     className={`p-3 border rounded-lg transition-all font-medium cursor-pointer ${isSelected
                       ? 'border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-200'
                       : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700'

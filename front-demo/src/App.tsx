@@ -20,9 +20,9 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/metrics/43114/hour" replace />} />
-            <Route path="metrics" element={<Navigate to="/metrics/43114/hour" replace />} />
-            <Route path="metrics/:chainId/:granularity" element={<Metrics />} />
+            <Route index element={<Navigate to="/evm-metrics/43114/hour" replace />} />
+            <Route path="evm-metrics" element={<Navigate to="/evm-metrics/43114/hour" replace />} />
+            <Route path="evm-metrics/:chainId/:granularity" element={<Metrics />} />
             <Route path="custom-sql" element={<CustomSQL />} />
             <Route path="sync-status" element={<SyncStatus />} />
           </Route>

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 function Layout() {
   const location = useLocation();
   const menuItems = [
-    { path: '/metrics/43114/hour', pathPrefix: '/metrics', label: 'Metrics', icon: BarChart3 },
+    { path: '/evm-metrics/43114/hour', pathPrefix: '/evm-metrics', label: 'EVM Metrics', icon: BarChart3 },
     { path: '/custom-sql', pathPrefix: '/custom-sql', label: 'Custom SQL', icon: FileCode },
     { path: '/sync-status', pathPrefix: '/sync-status', label: 'Sync status', icon: RefreshCw },
   ];
