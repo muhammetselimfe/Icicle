@@ -34,11 +34,14 @@ function formatDate(dateString: string, granularity: string): string {
     }
 }
 
-function formatMetricName(name: string): string {
-    return name
+function formatMetricName(name: string, granularity: string): string {
+    const baseName = name
         .split('_')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
+    
+    const capitalizedGranularity = granularity.charAt(0).toUpperCase() + granularity.slice(1);
+    return `${baseName} per ${capitalizedGranularity}`;
 }
 
 function formatValue(value: number): string {
@@ -79,7 +82,7 @@ function MetricChart({ metricName, data, granularity }: MetricChartProps) {
                     label: 'Time',
                 },
                 {
-                    label: formatMetricName(metricName),
+                    label: formatMetricName(metricName, granularity),
                     stroke: '#3b82f6',
                     width: 2,
                     fill: 'rgba(59, 130, 246, 0.1)',
@@ -145,7 +148,7 @@ function MetricChart({ metricName, data, granularity }: MetricChartProps) {
     if (!data || data.length === 0) {
         return (
             <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">{formatMetricName(metricName)}</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{formatMetricName(metricName, granularity)}</h3>
                 <p className="text-gray-500">No data available</p>
             </div>
         );
@@ -153,7 +156,7 @@ function MetricChart({ metricName, data, granularity }: MetricChartProps) {
 
     return (
         <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">{formatMetricName(metricName)}</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">{formatMetricName(metricName, granularity)}</h3>
             <div ref={chartRef} className="w-full" />
         </div>
     );

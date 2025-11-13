@@ -21,7 +21,7 @@ interface MetricData {
   computed_at: string;
 }
 
-type TimePeriod = '24h' | '7d' | '30d' | '90d' | '1y' | 'all';
+type TimePeriod = '24h' | '7d' | '30d' | '90d' | '1y';
 
 interface TimePeriodConfig {
   value: TimePeriod;
@@ -36,7 +36,6 @@ const TIME_PERIODS: TimePeriodConfig[] = [
   { value: '30d', label: '30 Days', granularity: 'day', clickhouseInterval: '30 DAY' },
   { value: '90d', label: '90 Days', granularity: 'day', clickhouseInterval: '90 DAY' },
   { value: '1y', label: '1 Year', granularity: 'day', clickhouseInterval: '1 YEAR' },
-  { value: 'all', label: 'All Time', granularity: 'week', clickhouseInterval: '' },
 ];
 
 function Metrics() {
@@ -237,32 +236,24 @@ function MetricChartLoader({
     queryFn: async () => {
       let sqlQuery: string;
 
-      if (periodConfig.value === 'all') {
-        // For "all time", just get all data without filling
-        sqlQuery = `SELECT chain_id, metric_name, granularity, period, value, computed_at 
-                    FROM metrics 
-                    WHERE chain_id = ${chainId} 
-                      AND granularity = '${periodConfig.granularity}' 
-                      AND metric_name = '${metricName}'
-                    ORDER BY period ASC`;
-      } else {
-        // Calculate step size and truncation function based on granularity
-        let stepInterval: string;
-        let truncateFunc: string;
-        if (periodConfig.granularity === 'hour') {
-          stepInterval = 'INTERVAL 1 HOUR';
-          truncateFunc = 'toStartOfHour';
-        } else if (periodConfig.granularity === 'day') {
-          stepInterval = 'INTERVAL 1 DAY';
-          truncateFunc = 'toStartOfDay';
-        } else {
-          stepInterval = 'INTERVAL 1 WEEK';
-          truncateFunc = 'toStartOfWeek';
-        }
 
-        // Use WITH FILL - simpler approach
-        // Select period and value, then add the constants
-        sqlQuery = `
+      // Calculate step size and truncation function based on granularity
+      let stepInterval: string;
+      let truncateFunc: string;
+      if (periodConfig.granularity === 'hour') {
+        stepInterval = 'INTERVAL 1 HOUR';
+        truncateFunc = 'toStartOfHour';
+      } else if (periodConfig.granularity === 'day') {
+        stepInterval = 'INTERVAL 1 DAY';
+        truncateFunc = 'toStartOfDay';
+      } else {
+        stepInterval = 'INTERVAL 1 WEEK';
+        truncateFunc = 'toStartOfWeek';
+      }
+
+      // Use WITH FILL - simpler approach
+      // Select period and value, then add the constants
+      sqlQuery = `
           SELECT 
             ${chainId} as chain_id,
             '${metricName}' as metric_name,
@@ -286,7 +277,6 @@ function MetricChartLoader({
               TO toDateTime64(${truncateFunc}(now()) + ${stepInterval}, 3, 'UTC')
               STEP ${stepInterval}
           )`;
-      }
 
       const result = await clickhouse.query({
         query: sqlQuery,
