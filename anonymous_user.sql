@@ -5,7 +5,7 @@ GRANT SHOW ON *.* TO frontend_reader;
 GRANT SELECT ON system.parts TO frontend_reader;
 GRANT SELECT ON system.tables TO frontend_reader;
 GRANT SELECT ON system.columns TO frontend_reader;
-
+GRANT SELECT ON system.databases TO frontend_reader;
 -- === Profiles ===
 
 -- 1) Anonymous: fast aggs, single-threaded, small outputs, anti-full-scan tripwires

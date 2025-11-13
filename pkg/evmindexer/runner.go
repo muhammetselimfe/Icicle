@@ -16,9 +16,10 @@ var indexerTablesSQL string
 
 // IndexRunner processes indexers for a single chain
 type IndexRunner struct {
-	chainId uint32
-	conn    driver.Conn
-	sqlDir  string
+	chainId    uint32
+	conn       driver.Conn
+	sqlDir     string
+	startBlock uint64 // First block to index (from config)
 
 	// Block state (updated by OnBlock)
 	latestBlockNum  uint64
@@ -27,16 +28,16 @@ type IndexRunner struct {
 	// Watermarks (in-memory cache, backed by DB)
 	watermarks map[string]*Watermark
 
-	// Throttling (wall time tracking)
-	lastRunTime map[string]time.Time
+	// Last watermark save time (for batching writes during sync)
+	lastWatermarkSave map[string]time.Time
 
 	// Discovered indexers (loaded once at startup)
-	granularMetrics    []string
+	granularMetrics     []string
 	incrementalIndexers []string
 }
 
 // NewIndexRunner creates a new indexer runner for a single chain
-func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string) (*IndexRunner, error) {
+func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string, startBlock uint64) (*IndexRunner, error) {
 	// Create tables from indexer_tables.sql (metrics and indexer_watermarks)
 	// Execute each CREATE TABLE statement
 	statements := splitSQL(indexerTablesSQL)
@@ -53,11 +54,12 @@ func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string) (*IndexRunn
 	}
 
 	runner := &IndexRunner{
-		chainId:     chainId,
-		conn:        conn,
-		sqlDir:      sqlDir,
-		watermarks:  make(map[string]*Watermark),
-		lastRunTime: make(map[string]time.Time),
+		chainId:           chainId,
+		conn:              conn,
+		sqlDir:            sqlDir,
+		startBlock:        startBlock,
+		watermarks:        make(map[string]*Watermark),
+		lastWatermarkSave: make(map[string]time.Time),
 	}
 
 	// Discover indexers
@@ -106,21 +108,21 @@ func (r *IndexRunner) Start() {
 	fmt.Printf("[Chain %d] Starting indexer loop\n", r.chainId)
 
 	for {
-		r.processAllIndexers()
-		time.Sleep(200 * time.Millisecond)
+		// Only process if we have block data
+		if r.latestBlockNum == 0 {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Process all pending blocks for incremental indexers
+		hasWork := r.processIncrementalBatch()
+
+		// Process granular metrics (time-based)
+		r.processGranularMetrics()
+
+		// Sleep only if no incremental work was done
+		if !hasWork {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
-}
-
-// processAllIndexers checks and runs all indexers
-func (r *IndexRunner) processAllIndexers() {
-	// Only process if we have block data
-	if r.latestBlockNum == 0 {
-		return
-	}
-
-	// 1. Granular metrics (time-based, period-driven)
-	r.processGranularMetrics()
-
-	// 2. Incremental indexers (block-based, 0.9s throttle)
-	r.processIncrementals()
 }

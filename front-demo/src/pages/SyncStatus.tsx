@@ -12,6 +12,11 @@ interface TableSize {
   rows: number;
 }
 
+interface ChainTxCount {
+  chain_id: number;
+  tx_count: number;
+}
+
 function SyncStatus() {
   const { url } = useClickhouseUrl();
 
@@ -22,6 +27,26 @@ function SyncStatus() {
 
   // Use shared sync status hook
   const { chains, isLoading, error, refetch, isFetching } = useSyncStatus();
+
+  const { data: chainTxCounts } = useQuery<ChainTxCount[]>({
+    queryKey: ['chainTxCounts', url],
+    queryFn: async () => {
+      const result = await clickhouse.query({
+        query: `
+          SELECT 
+            chain_id,
+            count() as tx_count
+          FROM raw_txs
+          GROUP BY chain_id
+          ORDER BY chain_id
+        `,
+        format: 'JSONEachRow',
+      });
+      const data = await result.json<ChainTxCount>();
+      return data as ChainTxCount[];
+    },
+    refetchInterval: 60000,
+  });
 
   const { data: tableSizes, isLoading: isLoadingTables, error: tableSizesError } = useQuery<TableSize[]>({
     queryKey: ['tableSizes', url],
@@ -99,6 +124,20 @@ function SyncStatus() {
   const totalRows = tableSizes?.reduce((sum, table) => sum + table.rows, 0) || 0;
   const totalBytes = tableSizes?.reduce((sum, table) => sum + table.size_bytes, 0) || 0;
 
+  const rawTxsTable = tableSizes?.find(table => table.table === 'raw_txs');
+  const rawTxsCount = rawTxsTable?.rows || 0;
+
+  // Calculate GB per 1B transactions
+  const gbPer1BTxs = rawTxsCount > 0
+    ? (totalBytes / rawTxsCount) * 1_000_000_000 / (1024 * 1024 * 1024)
+    : 0;
+
+  // Create a map of chain_id to tx_count for quick lookup
+  const txCountMap = useMemo(() => {
+    if (!chainTxCounts) return new Map<number, number>();
+    return new Map(chainTxCounts.map(c => [c.chain_id, c.tx_count]));
+  }, [chainTxCounts]);
+
   return (
     <PageTransition>
       <div className="p-8 space-y-6">
@@ -121,6 +160,33 @@ function SyncStatus() {
             <RefreshCw size={20} className={isFetching ? 'animate-spin' : ''} />
           </button>
         </div>
+
+        {/* Storage Efficiency Metric */}
+        {tableSizes && rawTxsCount > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                  Storage Efficiency
+                </h3>
+                <p className="text-3xl font-bold text-gray-900">
+                  {gbPer1BTxs.toFixed(2)} GB
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  per 1 billion transactions
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">
+                  Total DB: {formatBytes(totalBytes)}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Raw TXs: {rawTxsCount.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Loading State */}
         {isLoading && (
@@ -150,6 +216,9 @@ function SyncStatus() {
                     Chain ID
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Transactions
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Synced Block
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -170,6 +239,7 @@ function SyncStatus() {
                 {chains.map((chain, idx) => {
                   const blocksHealth = getBlocksBehindHealth(chain.blocksBehind);
                   const updatedHealth = getLastUpdatedHealth(chain.last_updated);
+                  const txCount = txCountMap.get(chain.chain_id) || 0;
 
                   return (
                     <tr
@@ -181,6 +251,11 @@ function SyncStatus() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-600">{chain.chain_id}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="text-sm font-medium text-gray-900">
+                          {txCount.toLocaleString()}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="text-sm font-medium text-gray-900">

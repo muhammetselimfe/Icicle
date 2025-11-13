@@ -112,7 +112,7 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 
 	// Initialize indexer runner - one per chain (skip in fast mode)
 	if !cfg.Fast {
-		indexerRunner, err := evmindexer.NewIndexRunner(cfg.ChainID, cfg.CHConn, "sql")
+		indexerRunner, err := evmindexer.NewIndexRunner(cfg.ChainID, cfg.CHConn, "sql", uint64(cfg.StartBlock))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create indexer runner: %w", err)
 		}
