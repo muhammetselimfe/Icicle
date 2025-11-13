@@ -8,9 +8,9 @@ function Layout() {
   const { url, setUrl } = useClickhouseUrl();
   const menuItems = [
     { path: '/evm-metrics/43114/7d', pathPrefix: '/evm-metrics', label: 'EVM Metrics', icon: BarChart3 },
-    { path: '/custom-sql', pathPrefix: '/custom-sql', label: 'Custom SQL', icon: FileCode },
     { path: '/indexer-demo', pathPrefix: '/indexer-demo', label: 'Indexer Demo', icon: Database },
     { path: '/sync-status', pathPrefix: '/sync-status', label: 'Sync status', icon: RefreshCw },
+    { path: '/custom-sql', pathPrefix: '/custom-sql', label: 'Custom SQL', icon: FileCode },
   ];
 
   return (
