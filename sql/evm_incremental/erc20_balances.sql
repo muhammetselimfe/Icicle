@@ -12,8 +12,16 @@ CREATE TABLE IF NOT EXISTS erc20_balances (
 ) ENGINE = ReplacingMergeTree(computed_at)
 ORDER BY (chain_id, wallet, token);
 
--- Process block range: update current balances
+-- Process block range: update current balances  
+-- Start from max(last_updated_block) to ensure idempotency
 INSERT INTO erc20_balances (chain_id, wallet, token, balance, last_updated_block)
+WITH 
+-- Get the max last_updated_block across all wallets/tokens for this chain
+max_block AS (
+    SELECT coalesce(max(last_updated_block), 0) as start_block
+    FROM erc20_balances FINAL
+    WHERE chain_id = @chain_id
+)
 SELECT 
     @chain_id as chain_id,
     agg.wallet,
@@ -40,8 +48,9 @@ FROM (
             reinterpretAsUInt256(reverse(data)) as amount,
             true as is_incoming
         FROM raw_logs
+        CROSS JOIN max_block
         WHERE chain_id = @chain_id
-          AND block_number >= @from_block  
+          AND block_number > max_block.start_block
           AND block_number <= @to_block
           AND topic0 = unhex('ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef')
           AND length(data) = 32
@@ -57,8 +66,9 @@ FROM (
             reinterpretAsUInt256(reverse(data)) as amount,
             false as is_incoming
         FROM raw_logs
+        CROSS JOIN max_block
         WHERE chain_id = @chain_id
-          AND block_number >= @from_block
+          AND block_number > max_block.start_block
           AND block_number <= @to_block
           AND topic0 = unhex('ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef')
           AND length(data) = 32
@@ -68,7 +78,7 @@ FROM (
     GROUP BY wallet, token
 ) agg
 LEFT JOIN (
-    SELECT wallet, token, balance
+    SELECT wallet, token, balance, last_updated_block
     FROM erc20_balances FINAL
     WHERE chain_id = @chain_id
 ) old ON agg.wallet = old.wallet AND agg.token = old.token;
