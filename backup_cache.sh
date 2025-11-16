@@ -121,6 +121,9 @@ case "${1:-backup}" in
     backup)
         backup
         ;;
+    restore)
+        restore "$@"
+        ;;
     list)
         list_snapshots
         ;;
@@ -134,15 +137,20 @@ case "${1:-backup}" in
         prune_old
         ;;
     *)
-        echo "Usage: $0 {init|backup|list|check|stats|prune}"
+        echo "Usage: $0 {init|backup|restore|list|check|stats|prune} [options]"
         echo ""
         echo "Commands:"
-        echo "  init   - Initialize the restic repository (run once)"
-        echo "  backup - Create a new backup (default)"
-        echo "  list   - List all snapshots"
-        echo "  check  - Check repository integrity"
-        echo "  stats  - Show repository statistics"
-        echo "  prune  - Remove old snapshots (keeps 7 daily, 4 weekly, 6 monthly)"
+        echo "  init    - Initialize the restic repository (run once)"
+        echo "  backup  - Create a new backup (default)"
+        echo "  restore [snapshot_id] - Restore from backup (latest if no ID specified)"
+        echo "  list    - List all snapshots"
+        echo "  check   - Check repository integrity"
+        echo "  stats   - Show repository statistics"
+        echo "  prune   - Remove old snapshots (keeps 7 daily, 4 weekly, 6 monthly)"
+        echo ""
+        echo "Examples:"
+        echo "  $0 restore           # Restore latest snapshot"
+        echo "  $0 restore abc123def  # Restore specific snapshot"
         exit 1
         ;;
 esac
