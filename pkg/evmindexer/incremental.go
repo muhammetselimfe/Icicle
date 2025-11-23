@@ -5,8 +5,12 @@ import (
 	"time"
 )
 
-// processIncrementalBatch processes all pending blocks for all incremental indexers
-// Processes ALL blocks in one shot: from watermark+1 to latestBlockNum
+// IncrementalBatchSize is the maximum number of blocks to process per batch
+// This prevents memory exhaustion when processing large block ranges with lots of events
+const IncrementalBatchSize = 20000
+
+// processIncrementalBatch processes pending blocks for all incremental indexers in batches
+// Processes up to IncrementalBatchSize blocks per indexer per call
 // Returns true if any work was done
 func (r *IndexRunner) processIncrementalBatch() bool {
 	hasWork := false
@@ -26,7 +30,12 @@ func (r *IndexRunner) processIncrementalBatch() bool {
 			fromBlock := watermark.LastBlockNum + 1
 			toBlock := r.latestBlockNum
 
-			// Run indexer for the entire block range
+			// Limit batch size to prevent memory exhaustion
+			if toBlock-fromBlock+1 > IncrementalBatchSize {
+				toBlock = fromBlock + IncrementalBatchSize - 1
+			}
+
+			// Run indexer for the batch
 			start := time.Now()
 			if err := r.runIncrementalIndexer(indexerFile, fromBlock, toBlock); err != nil {
 				fmt.Printf("[Chain %d] FATAL: Failed to run %s: %v\n", r.chainId, indexerName, err)
@@ -34,7 +43,7 @@ func (r *IndexRunner) processIncrementalBatch() bool {
 			}
 			elapsed := time.Since(start)
 
-			// Update watermark to the latest block
+			// Update watermark to the last processed block
 			watermark.LastBlockNum = toBlock
 
 			// Save watermark to DB
@@ -45,8 +54,9 @@ func (r *IndexRunner) processIncrementalBatch() bool {
 
 			// Log the batch processing
 			blockCount := toBlock - fromBlock + 1
-			fmt.Printf("[Chain %d] %s - processed blocks %d to %d (%d blocks) - %s\n",
-				r.chainId, indexerName, fromBlock, toBlock, blockCount, elapsed)
+			remainingBlocks := r.latestBlockNum - toBlock
+			fmt.Printf("[Chain %d] %s - processed blocks %d to %d (%d blocks, %d remaining) - %s\n",
+				r.chainId, indexerName, fromBlock, toBlock, blockCount, remainingBlocks, elapsed)
 
 			hasWork = true
 		}

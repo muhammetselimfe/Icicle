@@ -5,7 +5,7 @@ This directory contains block-based incremental indexers that process blockchain
 ## Incremental Indexing System
 
 - **Throttle**: All indexers run with minimum 0.9 seconds spacing between runs
-- **Batch limit**: Processes up to 20,000 blocks per run
+- **Batch limit**: Processes up to 20,000 blocks per run (prevents memory exhaustion)
 - **Use case**: Continuous, near real-time indexing of blockchain data
 - **Examples**: Address tracking, contract deployments, token balances
 
