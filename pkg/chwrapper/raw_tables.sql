@@ -168,8 +168,8 @@ ORDER BY (p_chain_id, block_time, block_number, tx_type);
 -- L1 Validator State table - tracks current state of L1 validators
 CREATE TABLE IF NOT EXISTS l1_validator_state (
     -- Identifiers
-    subnet_id FixedString(32),  -- The L1 subnet ID
-    validation_id FixedString(32),  -- Unique validator ID for L1 validators
+    subnet_id String,  -- The L1 subnet ID (CB58)
+    validation_id String,  -- Unique validator ID for L1 validators (CB58)
     node_id String,  -- Node ID in format "NodeID-xxx"
 
     -- Validator state
@@ -190,8 +190,8 @@ ORDER BY (p_chain_id, subnet_id, validation_id);
 
 -- L1 Subnets table - tracks which subnets are L1 and should be monitored
 CREATE TABLE IF NOT EXISTS l1_subnets (
-    subnet_id FixedString(32),  -- The L1 subnet ID
-    chain_id FixedString(32),  -- The associated chain ID
+    subnet_id String,  -- The L1 subnet ID (CB58)
+    chain_id String,  -- The associated chain ID (CB58)
     conversion_block UInt64,  -- Block number when subnet was converted to L1
     conversion_time DateTime64(3, 'UTC'),  -- When subnet was converted to L1
     p_chain_id UInt32,  -- Which P-chain instance

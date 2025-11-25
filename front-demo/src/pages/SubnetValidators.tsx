@@ -53,14 +53,14 @@ function SubnetValidators() {
       const result = await clickhouse.query({
         query: `
           SELECT
-            lower(hex(subnet_id)) as subnet_id,
-            lower(hex(chain_id)) as chain_id,
+            subnet_id,
+            chain_id,
             conversion_block,
             formatDateTime(conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
             (SELECT count(*) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count,
             (SELECT toString(sum(weight)) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as total_weight
           FROM l1_subnets
-          WHERE lower(hex(subnet_id)) = lower('${subnetId}')
+          WHERE subnet_id = '${subnetId}'
           LIMIT 1
         `,
         format: 'JSONEachRow',
@@ -77,7 +77,7 @@ function SubnetValidators() {
       const result = await clickhouse.query({
         query: `
           SELECT
-            lower(hex(validation_id)) as validation_id,
+            validation_id,
             node_id,
             toString(weight) as weight,
             toString(balance) as balance,
@@ -87,7 +87,7 @@ function SubnetValidators() {
             active,
             formatDateTime(last_updated, '%Y-%m-%d %H:%i:%s') as last_updated
           FROM l1_validator_state
-          WHERE lower(hex(subnet_id)) = lower('${subnetId}')
+          WHERE subnet_id = '${subnetId}'
           ORDER BY weight DESC
         `,
         format: 'JSONEachRow',

@@ -74,8 +74,8 @@ func InsertL1Subnets(ctx context.Context, conn clickhouse.Conn, subnets []L1Subn
 	now := time.Now()
 	for _, subnet := range subnets {
 		err = batch.Append(
-			idToBytes(subnet.SubnetID),
-			idToBytes(subnet.ChainID),
+			subnet.SubnetID.String(), // Store as CB58 string
+			subnet.ChainID.String(),  // Store as CB58 string
 			subnet.ConversionBlock,
 			subnet.ConversionTime,
 			subnet.PChainID,
@@ -106,8 +106,8 @@ func InsertValidatorStates(ctx context.Context, conn clickhouse.Conn, pchainID u
 	now := time.Now()
 	for _, state := range states {
 		err = batch.Append(
-			idToBytes(state.SubnetID),
-			idToBytes(state.ValidationID),
+			state.SubnetID.String(),     // Store as CB58 string
+			state.ValidationID.String(), // Store as CB58 string
 			state.NodeID.String(),
 			state.Balance,
 			state.Weight,
@@ -142,13 +142,15 @@ func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([
 
 	var subnetIDs []ids.ID
 	for rows.Next() {
-		var subnetBytes []byte
-		if err := rows.Scan(&subnetBytes); err != nil {
+		var subnetIDStr string
+		if err := rows.Scan(&subnetIDStr); err != nil {
 			return nil, fmt.Errorf("failed to scan subnet_id: %w", err)
 		}
 
-		var subnetID ids.ID
-		copy(subnetID[:], subnetBytes)
+		subnetID, err := ids.FromString(subnetIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse subnet_id %s: %w", subnetIDStr, err)
+		}
 		subnetIDs = append(subnetIDs, subnetID)
 	}
 

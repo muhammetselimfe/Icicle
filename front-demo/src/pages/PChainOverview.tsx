@@ -111,8 +111,8 @@ function PChainOverview() {
       const result = await clickhouse.query({
         query: `
           SELECT
-            lower(hex(subnet_id)) as subnet_id,
-            lower(hex(chain_id)) as chain_id,
+            subnet_id,
+            chain_id,
             conversion_block,
             formatDateTime(conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
             (SELECT count(*) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count
