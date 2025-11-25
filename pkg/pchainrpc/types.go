@@ -171,13 +171,13 @@ type GetCurrentValidatorsResponse struct {
 // ValidatorInfo represents validator information from RPC
 type ValidatorInfo struct {
 	TxID             string  `json:"txID"`
-	StartTime        uint64  `json:"startTime"`
-	EndTime          uint64  `json:"endTime"`
-	Weight           string  `json:"weight"` // String because it can be large
+	StartTime        string  `json:"startTime"` // Changed to string because RPC returns it as string sometimes
+	EndTime          string  `json:"endTime"`   // Changed to string because RPC returns it as string sometimes
+	Weight           string  `json:"weight"`    // String because it can be large
 	NodeID           string  `json:"nodeID"`
-	ValidationID     string  `json:"validationID,omitempty"`     // For L1 validators
-	Balance          string  `json:"balance,omitempty"`          // For L1 validators
-	Uptime           string  `json:"uptime,omitempty"`           // Percentage as string
+	ValidationID     string  `json:"validationID,omitempty"` // For L1 validators
+	Balance          string  `json:"balance,omitempty"`      // For L1 validators
+	Uptime           string  `json:"uptime,omitempty"`       // Percentage as string
 	Connected        bool    `json:"connected"`
 	Signer           *string `json:"signer,omitempty"`
 	DelegationFee    string  `json:"delegationFee,omitempty"`

@@ -984,10 +984,26 @@ func ParseValidatorInfo(info ValidatorInfo, subnetID ids.ID) (*ValidatorState, e
 		SubnetID:     subnetID,
 		Weight:       weight,
 		Balance:      balance,
-		StartTime:    time.Unix(int64(info.StartTime), 0),
-		EndTime:      time.Unix(int64(info.EndTime), 0),
 		Uptime:       uptime,
 		Active:       info.Connected,
+	}
+
+	// Parse StartTime
+	if info.StartTime != "" {
+		startTime, err := parseUint64Field(info.StartTime, "startTime")
+		if err != nil {
+			return nil, err
+		}
+		state.StartTime = time.Unix(int64(startTime), 0)
+	}
+
+	// Parse EndTime
+	if info.EndTime != "" {
+		endTime, err := parseUint64Field(info.EndTime, "endTime")
+		if err != nil {
+			return nil, err
+		}
+		state.EndTime = time.Unix(int64(endTime), 0)
 	}
 
 	return state, nil
