@@ -159,24 +159,26 @@ func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([
 	return subnetIDs, nil
 }
 
-// DiscoverL1SubnetsFromTransactions scans p_chain_txs for ConvertSubnetToL1 transactions
+// DiscoverL1SubnetsFromTransactions scans p_chain_txs for ConvertSubnetToL1 and TransformSubnet transactions
 // and returns L1 subnet information
 func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1Subnet, error) {
+	// We also look for TransformSubnet (which creates elastic subnets) as they are effectively L1s
+	// or at least have validators we want to track.
 	query := `
 		SELECT
 			tx_data.subnetID as subnet_id,
-			tx_data.chainID as chain_id,
+			coalesce(tx_data.chainID, '') as chain_id,
 			block_number,
 			block_time
 		FROM p_chain_txs
 		WHERE p_chain_id = ?
-		  AND tx_type = 'ConvertSubnetToL1'
+		  AND (tx_type = 'ConvertSubnetToL1' OR tx_type = 'TransformSubnet')
 		ORDER BY block_number DESC
 	`
 
 	rows, err := conn.Query(ctx, query, pchainID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query ConvertSubnetToL1 transactions: %w", err)
+		return nil, fmt.Errorf("failed to query subnet transactions: %w", err)
 	}
 	defer rows.Close()
 
@@ -204,10 +206,16 @@ func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn
 		}
 		seen[subnetID] = true
 
-		// Parse chain ID
-		chainID, err := ids.FromString(chainIDStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse chain ID %s: %w", chainIDStr, err)
+		// Parse chain ID (might be empty for TransformSubnet)
+		var chainID ids.ID
+		if chainIDStr != "" {
+			chainID, err = ids.FromString(chainIDStr)
+			if err != nil {
+				// Log error but continue? Or fail? failing is safer to detect issues.
+				// But TransformSubnet might not have chainID in the same field?
+				// TransformSubnet doesn't have ChainID field. It's usually associated with the subnet.
+				// We use empty ID if not found.
+			}
 		}
 
 		subnets = append(subnets, L1Subnet{

@@ -21,10 +21,10 @@ type ValidatorSyncerConfig struct {
 
 // ValidatorSyncer periodically syncs L1 validator state
 type ValidatorSyncer struct {
-	config  ValidatorSyncerConfig
-	fetcher *pchainrpc.Fetcher
-	conn    clickhouse.Conn
-	stopCh  chan struct{}
+	config   ValidatorSyncerConfig
+	fetcher  *pchainrpc.Fetcher
+	conn     clickhouse.Conn
+	stopCh   chan struct{}
 	stopOnce sync.Once
 }
 
