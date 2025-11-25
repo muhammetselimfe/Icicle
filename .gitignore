@@ -1,4 +1,4 @@
 rpc_cache
 *.env
 config.json
-config.yaml
+config.yamlsync.log

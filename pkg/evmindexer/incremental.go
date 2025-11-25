@@ -7,7 +7,7 @@ import (
 
 // IncrementalBatchSize is the maximum number of blocks to process per batch
 // This prevents memory exhaustion when processing large block ranges with lots of events
-const IncrementalBatchSize = 20000
+const IncrementalBatchSize = 2000
 
 // processIncrementalBatch processes pending blocks for all incremental indexers in batches
 // Processes up to IncrementalBatchSize blocks per indexer per call

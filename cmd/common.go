@@ -6,6 +6,7 @@ import (
 	"clickhouse-metrics-poc/pkg/pchainsyncer"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"gopkg.in/yaml.v3"
@@ -20,6 +21,10 @@ type ChainConfig struct {
 	FetchBatchSize int    `yaml:"fetchBatchSize"`
 	MaxConcurrency int    `yaml:"maxConcurrency"`
 	Name           string `yaml:"name"`
+
+	// P-chain specific config
+	EnableValidatorSync   bool `yaml:"enableValidatorSync"`   // Enable L1 validator state syncing
+	ValidatorSyncInterval int  `yaml:"validatorSyncInterval"` // Validator sync interval in minutes (default: 5)
 }
 
 // Syncer interface for all chain syncers
@@ -77,13 +82,23 @@ func CreateSyncer(cfg ChainConfig, conn driver.Conn, cacheInstance *cache.Cache,
 		})
 
 	case "p":
+		// Convert validator sync interval from minutes to duration
+		validatorSyncInterval := time.Duration(cfg.ValidatorSyncInterval) * time.Minute
+		if cfg.ValidatorSyncInterval == 0 {
+			validatorSyncInterval = 5 * time.Minute // Default: 5 minutes
+		}
+
 		return pchainsyncer.NewPChainSyncer(pchainsyncer.Config{
-			RpcURL:         cfg.RpcURL,
-			StartBlock:     cfg.StartBlock,
-			MaxConcurrency: cfg.MaxConcurrency,
-			FetchBatchSize: cfg.FetchBatchSize,
-			CHConn:         conn,
-			Cache:          cacheInstance,
+			RpcURL:                cfg.RpcURL,
+			StartBlock:            cfg.StartBlock,
+			MaxConcurrency:        cfg.MaxConcurrency,
+			FetchBatchSize:        cfg.FetchBatchSize,
+			CHConn:                conn,
+			Cache:                 cacheInstance,
+			ChainID:               cfg.ChainID,
+			Name:                  cfg.Name,
+			EnableValidatorSync:   cfg.EnableValidatorSync,
+			ValidatorSyncInterval: validatorSyncInterval,
 		})
 
 	default:

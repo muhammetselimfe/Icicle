@@ -4,6 +4,7 @@ import (
 	"clickhouse-metrics-poc/pkg/pchainrpc"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ava-labs/avalanchego/ids"
@@ -46,4 +47,181 @@ func InsertPChainTxs(ctx context.Context, conn clickhouse.Conn, pchainID uint32,
 	}
 
 	return batch.Send()
+}
+
+// L1Subnet represents an L1 subnet to be tracked
+type L1Subnet struct {
+	SubnetID        ids.ID
+	ChainID         ids.ID
+	ConversionBlock uint64
+	ConversionTime  time.Time
+	PChainID        uint32
+}
+
+// InsertL1Subnets inserts or updates L1 subnet records
+func InsertL1Subnets(ctx context.Context, conn clickhouse.Conn, subnets []L1Subnet) error {
+	if len(subnets) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO l1_subnets (
+		subnet_id, chain_id, conversion_block, conversion_time, p_chain_id, last_synced
+	)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare batch: %w", err)
+	}
+
+	now := time.Now()
+	for _, subnet := range subnets {
+		err = batch.Append(
+			idToBytes(subnet.SubnetID),
+			idToBytes(subnet.ChainID),
+			subnet.ConversionBlock,
+			subnet.ConversionTime,
+			subnet.PChainID,
+			now,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to append subnet %s: %w", subnet.SubnetID, err)
+		}
+	}
+
+	return batch.Send()
+}
+
+// InsertValidatorStates inserts or updates validator state records
+func InsertValidatorStates(ctx context.Context, conn clickhouse.Conn, pchainID uint32, states []*pchainrpc.ValidatorState) error {
+	if len(states) == 0 {
+		return nil
+	}
+
+	batch, err := conn.PrepareBatch(ctx, `INSERT INTO l1_validator_state (
+		subnet_id, validation_id, node_id, balance, weight,
+		start_time, end_time, uptime_percentage, active, last_updated, p_chain_id
+	)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare batch: %w", err)
+	}
+
+	now := time.Now()
+	for _, state := range states {
+		err = batch.Append(
+			idToBytes(state.SubnetID),
+			idToBytes(state.ValidationID),
+			state.NodeID.String(),
+			state.Balance,
+			state.Weight,
+			state.StartTime,
+			state.EndTime,
+			state.Uptime,
+			state.Active,
+			now,
+			pchainID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to append validator state %s: %w", state.ValidationID, err)
+		}
+	}
+
+	return batch.Send()
+}
+
+// GetL1Subnets queries ClickHouse for all L1 subnets to monitor
+func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]ids.ID, error) {
+	query := `
+		SELECT DISTINCT subnet_id
+		FROM l1_subnets
+		WHERE p_chain_id = ?
+	`
+
+	rows, err := conn.Query(ctx, query, pchainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query l1_subnets: %w", err)
+	}
+	defer rows.Close()
+
+	var subnetIDs []ids.ID
+	for rows.Next() {
+		var subnetBytes []byte
+		if err := rows.Scan(&subnetBytes); err != nil {
+			return nil, fmt.Errorf("failed to scan subnet_id: %w", err)
+		}
+
+		var subnetID ids.ID
+		copy(subnetID[:], subnetBytes)
+		subnetIDs = append(subnetIDs, subnetID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return subnetIDs, nil
+}
+
+// DiscoverL1SubnetsFromTransactions scans p_chain_txs for ConvertSubnetToL1 transactions
+// and returns L1 subnet information
+func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1Subnet, error) {
+	query := `
+		SELECT
+			tx_data.Subnet as subnet_id,
+			tx_data.ChainID as chain_id,
+			block_number,
+			block_time
+		FROM p_chain_txs
+		WHERE p_chain_id = ?
+		  AND tx_type = 'ConvertSubnetToL1'
+		ORDER BY block_number DESC
+	`
+
+	rows, err := conn.Query(ctx, query, pchainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ConvertSubnetToL1 transactions: %w", err)
+	}
+	defer rows.Close()
+
+	var subnets []L1Subnet
+	seen := make(map[ids.ID]bool) // Deduplicate by subnet_id
+
+	for rows.Next() {
+		var subnetIDStr, chainIDStr string
+		var blockNumber uint64
+		var blockTime time.Time
+
+		if err := rows.Scan(&subnetIDStr, &chainIDStr, &blockNumber, &blockTime); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Parse subnet ID
+		subnetID, err := ids.FromString(subnetIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse subnet ID %s: %w", subnetIDStr, err)
+		}
+
+		// Skip duplicates (keep the most recent one due to ORDER BY DESC)
+		if seen[subnetID] {
+			continue
+		}
+		seen[subnetID] = true
+
+		// Parse chain ID
+		chainID, err := ids.FromString(chainIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse chain ID %s: %w", chainIDStr, err)
+		}
+
+		subnets = append(subnets, L1Subnet{
+			SubnetID:        subnetID,
+			ChainID:         chainID,
+			ConversionBlock: blockNumber,
+			ConversionTime:  blockTime,
+			PChainID:        pchainID,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return subnets, nil
 }

@@ -9,9 +9,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
@@ -892,6 +894,127 @@ func (f *Fetcher) fetchSingleJSONBlock(height int64) (*JSONBlock, error) {
 	}
 
 	return nil, fmt.Errorf("failed to fetch block %d after %d retries: %w", height, f.maxRetries, lastErr)
+}
+
+// GetCurrentValidators fetches current validators for a given subnet with retry logic
+func (f *Fetcher) GetCurrentValidators(ctx context.Context, subnetID string) (*GetCurrentValidatorsResponse, error) {
+	params := map[string]interface{}{
+		"subnetID": subnetID,
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			log.Printf("WARNING: GetCurrentValidators failed for subnet %s: %v. Retrying (attempt %d/%d) after %v",
+				subnetID, lastErr, attempt, f.maxRetries, delay)
+			time.Sleep(delay)
+		}
+
+		var response GetCurrentValidatorsResponse
+		err := f.client.Requester.SendRequest(
+			ctx,
+			"platform.getCurrentValidators",
+			params,
+			&response,
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return &response, nil
+	}
+
+	return nil, fmt.Errorf("failed to get current validators for subnet %s after %d retries: %w", subnetID, f.maxRetries, lastErr)
+}
+
+// ParseValidatorInfo converts RPC ValidatorInfo to normalized ValidatorState
+func ParseValidatorInfo(info ValidatorInfo, subnetID ids.ID) (*ValidatorState, error) {
+	// Parse NodeID
+	nodeID, err := ids.NodeIDFromString(info.NodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse node ID %s: %w", info.NodeID, err)
+	}
+
+	// Parse weight using strconv for better handling of large uint64 values
+	weight, err := parseUint64Field(info.Weight, "weight")
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse balance (for L1 validators)
+	var balance uint64
+	if info.Balance != "" {
+		balance, err = parseUint64Field(info.Balance, "balance")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse uptime
+	var uptime float64
+	if info.Uptime != "" {
+		uptime, err = parseFloat64Field(info.Uptime, "uptime")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Parse ValidationID (for L1 validators)
+	var validationID ids.ID
+	if info.ValidationID != "" {
+		validationID, err = ids.FromString(info.ValidationID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse validation ID %s: %w", info.ValidationID, err)
+		}
+	} else {
+		// For non-L1 validators, use TxID as ValidationID
+		validationID, err = ids.FromString(info.TxID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse tx ID %s: %w", info.TxID, err)
+		}
+	}
+
+	state := &ValidatorState{
+		ValidationID: validationID,
+		NodeID:       nodeID,
+		SubnetID:     subnetID,
+		Weight:       weight,
+		Balance:      balance,
+		StartTime:    time.Unix(int64(info.StartTime), 0),
+		EndTime:      time.Unix(int64(info.EndTime), 0),
+		Uptime:       uptime,
+		Active:       info.Connected,
+	}
+
+	return state, nil
+}
+
+// parseUint64Field safely parses a string to uint64
+func parseUint64Field(value string, fieldName string) (uint64, error) {
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s '%s': %w", fieldName, value, err)
+	}
+	return parsed, nil
+}
+
+// parseFloat64Field safely parses a string to float64
+func parseFloat64Field(value string, fieldName string) (float64, error) {
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %s '%s': %w", fieldName, value, err)
+	}
+	return parsed, nil
 }
 
 // Close stops all background goroutines and cleans up resources

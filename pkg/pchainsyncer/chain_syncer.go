@@ -30,6 +30,10 @@ type Config struct {
 	CHConn         driver.Conn  // ClickHouse connection
 	Cache          *cache.Cache // Cache for RPC calls
 	Name           string       // Chain name for display
+
+	// Validator syncer config
+	EnableValidatorSync   bool          // Enable L1 validator state syncing
+	ValidatorSyncInterval time.Duration // How often to sync validator state (default: 5min)
 }
 
 // PChainSyncer manages P-chain sync
@@ -43,6 +47,9 @@ type PChainSyncer struct {
 	startBlock     int64                       // Starting block when no watermark
 	fetchBatchSize int
 	flushInterval  time.Duration
+
+	// Validator syncer
+	validatorSyncer *ValidatorSyncer
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -98,6 +105,19 @@ func NewPChainSyncer(cfg Config) (*PChainSyncer, error) {
 		startTime:      time.Now(),
 	}
 
+	// Create validator syncer if enabled
+	if cfg.EnableValidatorSync {
+		ps.validatorSyncer = NewValidatorSyncer(
+			ValidatorSyncerConfig{
+				PChainID:      cfg.ChainID,
+				SyncInterval:  cfg.ValidatorSyncInterval,
+				DiscoveryMode: "auto",
+			},
+			fetcher,
+			cfg.CHConn,
+		)
+	}
+
 	return ps, nil
 }
 
@@ -138,12 +158,27 @@ func (ps *PChainSyncer) Start() error {
 	ps.wg.Add(1)
 	go ps.printProgress()
 
+	// Start validator syncer if enabled
+	if ps.validatorSyncer != nil {
+		ps.wg.Add(1)
+		go func() {
+			defer ps.wg.Done()
+			ps.validatorSyncer.Start(ps.ctx)
+		}()
+	}
+
 	return nil
 }
 
 // Stop gracefully shuts down the syncer
 func (ps *PChainSyncer) Stop() {
 	log.Printf("[Chain %d - %s] Stopping syncer...", ps.chainID, ps.chainName)
+
+	// Stop validator syncer first
+	if ps.validatorSyncer != nil {
+		ps.validatorSyncer.Stop()
+	}
+
 	ps.cancel()
 	close(ps.blockChan)
 	ps.wg.Wait()

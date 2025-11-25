@@ -13,4 +13,8 @@
   maxConcurrency: 100
   name: P-Chain
   vm: p
+  # Enable L1 validator state syncing (discovers L1 subnets from ConvertSubnetToL1 transactions)
+  enableValidatorSync: true
+  # How often to sync validator state in minutes (default: 5)
+  validatorSyncInterval: 5
 

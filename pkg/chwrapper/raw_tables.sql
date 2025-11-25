@@ -165,3 +165,37 @@ CREATE TABLE IF NOT EXISTS p_chain_txs (
 ) ENGINE = MergeTree()
 ORDER BY (p_chain_id, block_time, block_number, tx_type);
 
+-- L1 Validator State table - tracks current state of L1 validators
+CREATE TABLE IF NOT EXISTS l1_validator_state (
+    -- Identifiers
+    subnet_id FixedString(32),  -- The L1 subnet ID
+    validation_id FixedString(32),  -- Unique validator ID for L1 validators
+    node_id String,  -- Node ID in format "NodeID-xxx"
+
+    -- Validator state
+    balance UInt64,  -- Remaining balance for this validator
+    weight UInt64,  -- Current validator weight/stake
+    start_time DateTime64(3, 'UTC'),  -- When validator started
+    end_time DateTime64(3, 'UTC'),  -- When validator ends
+    uptime_percentage Float64,  -- Uptime percentage (0-100)
+
+    -- Status
+    active Bool,  -- Whether validator is currently active
+
+    -- Metadata
+    last_updated DateTime64(3, 'UTC'),  -- When this state was last updated
+    p_chain_id UInt32  -- Which P-chain instance (mainnet vs testnet)
+) ENGINE = ReplacingMergeTree(last_updated)
+ORDER BY (p_chain_id, subnet_id, validation_id);
+
+-- L1 Subnets table - tracks which subnets are L1 and should be monitored
+CREATE TABLE IF NOT EXISTS l1_subnets (
+    subnet_id FixedString(32),  -- The L1 subnet ID
+    chain_id FixedString(32),  -- The associated chain ID
+    conversion_block UInt64,  -- Block number when subnet was converted to L1
+    conversion_time DateTime64(3, 'UTC'),  -- When subnet was converted to L1
+    p_chain_id UInt32,  -- Which P-chain instance
+    last_synced DateTime64(3, 'UTC')  -- Last time validators were synced for this subnet
+) ENGINE = ReplacingMergeTree(last_synced)
+PRIMARY KEY (p_chain_id, subnet_id);
+
