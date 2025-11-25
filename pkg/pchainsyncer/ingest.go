@@ -164,8 +164,8 @@ func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([
 func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1Subnet, error) {
 	query := `
 		SELECT
-			tx_data.Subnet as subnet_id,
-			tx_data.ChainID as chain_id,
+			tx_data.subnetID as subnet_id,
+			tx_data.chainID as chain_id,
 			block_number,
 			block_time
 		FROM p_chain_txs
