@@ -219,7 +219,6 @@ function SubnetValidators() {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Weight</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Balance</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Uptime</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Duration</th>
                   </tr>
                 </thead>
@@ -259,21 +258,9 @@ function SubnetValidators() {
                           <span className="text-sm text-gray-900">{formatBalance(validator.balance)}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-16 bg-gray-200 rounded-full h-2 overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full ${validator.uptime_percentage > 90 ? 'bg-green-500' : validator.uptime_percentage > 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                              style={{ width: `${validator.uptime_percentage * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-gray-900">{(validator.uptime_percentage * 100).toFixed(1)}%</span>
-                        </div>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-xs text-gray-500 space-y-1">
                           <p>Start: {new Date(validator.start_time).toLocaleDateString()}</p>
-                          <p>End: {new Date(validator.end_time).toLocaleDateString()}</p>
                         </div>
                       </td>
                     </tr>
