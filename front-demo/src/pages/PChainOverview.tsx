@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import PageTransition from '../components/PageTransition';
 import { useClickhouseUrl } from '../hooks/useClickhouseUrl';
 import { Network, Users, Scale, Activity, ExternalLink, Copy } from 'lucide-react';
+import MetricChart from '../components/MetricChart';
 
 interface GlobalStats {
   total_l1_subnets: number;
@@ -14,8 +15,8 @@ interface GlobalStats {
 }
 
 interface SubnetCreationTimeline {
-  date: string;
-  subnets_created: number;
+  period: string;
+  value: number;
 }
 
 interface PlatformActivity {
@@ -29,6 +30,13 @@ interface L1Subnet {
   conversion_block: number;
   conversion_time: string;
   validator_count: number;
+}
+
+interface PChainTx {
+  tx_id: string;
+  tx_type: string;
+  block_number: number;
+  block_time: string;
 }
 
 function PChainOverview() {
@@ -67,16 +75,25 @@ function PChainOverview() {
       const result = await clickhouse.query({
         query: `
           SELECT
-            toStartOfDay(conversion_time) as date,
-            count() as subnets_created
+            formatDateTime(toStartOfMonth(conversion_time), '%Y-%m-%d') as period,
+            count() as value
           FROM l1_subnets
-          GROUP BY date
-          ORDER BY date
+          GROUP BY period
+          ORDER BY period
         `,
         format: 'JSONEachRow',
       });
       const data = await result.json<SubnetCreationTimeline>();
-      return data as SubnetCreationTimeline[];
+      
+      // Calculate cumulative sum
+      let cumulative = 0;
+      return data.map(item => {
+        cumulative += item.value;
+        return {
+          ...item,
+          value: cumulative
+        };
+      });
     },
     refetchInterval: 60000,
   });
@@ -115,8 +132,8 @@ function PChainOverview() {
             chain_id,
             conversion_block,
             formatDateTime(conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
-            (SELECT count(*) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count
-          FROM l1_subnets
+            (SELECT count(*) FROM l1_validator_state FINAL WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count
+          FROM l1_subnets FINAL
           ORDER BY conversion_time DESC
         `,
         format: 'JSONEachRow',
@@ -127,13 +144,45 @@ function PChainOverview() {
     refetchInterval: 30000,
   });
 
+  // Recent P-Chain Transactions
+  const { data: recentTxs, isLoading: loadingTxs } = useQuery<PChainTx[]>({
+    queryKey: ['recent-txs', url],
+    queryFn: async () => {
+      const result = await clickhouse.query({
+        query: `
+          SELECT
+            base58Encode(concat(tx_id, substring(SHA256(SHA256(tx_id)), 1, 4))) as tx_id,
+            tx_type,
+            block_number,
+            toUnixTimestamp(block_time) as timestamp
+          FROM p_chain_txs
+          WHERE block_time >= now() - INTERVAL 1 DAY
+          ORDER BY block_time DESC
+          LIMIT 10
+        `,
+        format: 'JSONEachRow',
+      });
+      const data = await result.json<any>();
+      return data.map((item: any) => ({
+        ...item,
+        block_time: new Date(item.timestamp * 1000).toISOString() // Convert to ISO string for formatTimestamp
+      })) as PChainTx[];
+    },
+    refetchInterval: 15000,
+  });
+
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return 'Today';
+    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHour < 24) return `${diffHour}h ago`;
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
@@ -241,37 +290,25 @@ function PChainOverview() {
 
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Subnet Creation Timeline */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">L1 Subnet Creation Timeline</h2>
+          {/* Subnet Creation Timeline Chart */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
             {loadingTimeline ? (
-              <div className="h-64 flex items-center justify-center">
+              <div className="h-[350px] flex items-center justify-center">
                 <p className="text-gray-500">Loading timeline...</p>
               </div>
-            ) : timeline && timeline.length > 0 ? (
-              <div className="space-y-2">
-                {timeline.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-24">
-                      {new Date(item.date).toLocaleDateString()}
-                    </span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                      <div
-                        className="bg-blue-500 h-full rounded-full flex items-center justify-end pr-2"
-                        style={{ width: `${(item.subnets_created / Math.max(...timeline.map(t => t.subnets_created))) * 100}%` }}
-                      >
-                        <span className="text-xs font-semibold text-white">
-                          {item.subnets_created}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             ) : (
-              <div className="h-64 flex items-center justify-center">
-                <p className="text-gray-500">No subnet creation data available</p>
-              </div>
+              <MetricChart
+                metricName="Cumulative L1 Subnets"
+                data={timeline?.map(t => ({
+                  chain_id: 0,
+                  metric_name: 'total_l1_subnets',
+                  granularity: 'month',
+                  period: t.period,
+                  value: t.value,
+                  computed_at: new Date().toISOString()
+                })) || []}
+                granularity="month"
+              />
             )}
           </div>
 
@@ -389,6 +426,79 @@ function PChainOverview() {
           ) : (
             <div className="p-8 text-center">
               <p className="text-gray-500">No L1 subnets found</p>
+            </div>
+          )}
+        </div>
+
+        {/* Recent P-Chain Transactions */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900">Recent Transactions</h2>
+          </div>
+
+          {loadingTxs ? (
+            <div className="p-8 text-center">
+              <p className="text-gray-500">Loading transactions...</p>
+            </div>
+          ) : recentTxs && recentTxs.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Tx ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Block
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {recentTxs.map((tx, idx) => (
+                    <tr key={tx.tx_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs font-mono text-gray-900">
+                            {truncateHash(tx.tx_id, 12)}
+                          </code>
+                          <button
+                            onClick={() => copyToClipboard(tx.tx_id)}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Copy full Tx ID"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {tx.tx_type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <span className="text-sm text-gray-900">
+                          {tx.block_number.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-600">
+                          {formatTimestamp(tx.block_time)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-8 text-center">
+              <p className="text-gray-500">No recent transactions found</p>
             </div>
           )}
         </div>

@@ -3,6 +3,8 @@ package cmd
 import (
 	"clickhouse-metrics-poc/pkg/cache"
 	"clickhouse-metrics-poc/pkg/chwrapper"
+	"clickhouse-metrics-poc/pkg/registrysyncer"
+	"context"
 	"log"
 	"sync"
 )
@@ -35,6 +37,13 @@ func RunIngest(fast bool) {
 	if err != nil {
 		log.Fatalf("Failed to create tables: %v", err)
 	}
+
+	// Sync L1 Registry at startup (in background)
+	go func() {
+		if err := registrysyncer.SyncRegistry(context.Background(), conn); err != nil {
+			log.Printf("Failed to sync L1 registry: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 

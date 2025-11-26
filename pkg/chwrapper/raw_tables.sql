@@ -199,3 +199,13 @@ CREATE TABLE IF NOT EXISTS l1_subnets (
 ) ENGINE = ReplacingMergeTree(last_synced)
 PRIMARY KEY (p_chain_id, subnet_id);
 
+-- L1 Registry table - metadata from external registry (L1Beat)
+CREATE TABLE IF NOT EXISTS l1_registry (
+    subnet_id String,
+    name String,
+    description String,
+    logo_url String,
+    website_url String,
+    last_updated DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(last_updated)
+PRIMARY KEY subnet_id;

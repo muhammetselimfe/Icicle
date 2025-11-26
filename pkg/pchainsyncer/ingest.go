@@ -212,7 +212,7 @@ func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn
 		var chainID ids.ID
 		if chainIDStr != "" {
 			chainID, err = ids.FromString(chainIDStr)
-			if err != nil {
+		if err != nil {
 				// Log error but continue? Or fail? failing is safer to detect issues.
 				// But TransformSubnet might not have chainID in the same field?
 				// TransformSubnet doesn't have ChainID field. It's usually associated with the subnet.

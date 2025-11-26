@@ -12,7 +12,8 @@ import {
   CheckCircle, 
   XCircle, 
   Activity,
-  Wallet
+  Wallet,
+  Copy
 } from 'lucide-react';
 
 interface Validator {
@@ -109,6 +110,10 @@ function SubnetValidators() {
   const formatBalance = (balance: string) => {
     const num = parseFloat(balance);
     return (num / 1e9).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' AVAX';
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   const filteredValidators = validators?.filter(v => 
@@ -226,11 +231,29 @@ function SubnetValidators() {
                   {filteredValidators.map((validator) => (
                     <tr key={validator.validation_id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900 font-mono">{validator.node_id}</span>
-                          <span className="text-xs text-gray-500 font-mono" title="Validation ID">
-                            {validator.validation_id.substring(0, 12)}...
-                          </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 font-mono">{validator.node_id}</span>
+                            <button
+                              onClick={() => copyToClipboard(validator.node_id)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                              title="Copy Node ID"
+                            >
+                              <Copy size={12} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 font-mono" title="Validation ID">
+                              {validator.validation_id.substring(0, 12)}...
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(validator.validation_id)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                              title="Copy Validation ID"
+                            >
+                              <Copy size={12} />
+                            </button>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
