@@ -1,9 +1,9 @@
 package pchainsyncer
 
 import (
-	"clickhouse-metrics-poc/pkg/cache"
-	"clickhouse-metrics-poc/pkg/chwrapper"
-	"clickhouse-metrics-poc/pkg/pchainrpc"
+	"icicle/pkg/cache"
+	"icicle/pkg/chwrapper"
+	"icicle/pkg/pchainrpc"
 	"context"
 	"fmt"
 	"log"

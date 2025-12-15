@@ -1,7 +1,7 @@
 package main
 
 import (
-	"clickhouse-metrics-poc/cmd"
+	"icicle/cmd"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -18,10 +18,12 @@ func main() {
 		Short: "Drop calculated tables (keeps raw_* and sync_watermark)",
 		Run: func(command *cobra.Command, args []string) {
 			all, _ := command.Flags().GetBool("all")
-			cmd.RunWipe(all)
+			chainID, _ := command.Flags().GetUint32("chain")
+			cmd.RunWipe(all, chainID)
 		},
 	}
 	wipeCmd.Flags().Bool("all", false, "Drop all tables including raw_* tables")
+	wipeCmd.Flags().Uint32("chain", 0, "Wipe data for a specific chain ID only")
 
 	ingestCmd := &cobra.Command{
 		Use:   "ingest",

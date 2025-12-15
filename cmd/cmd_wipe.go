@@ -5,18 +5,31 @@ import (
 	"fmt"
 	"log"
 
-	"clickhouse-metrics-poc/pkg/chwrapper"
+	"icicle/pkg/chwrapper"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-func RunWipe(all bool) {
+func RunWipe(all bool, chainID uint32) {
 	conn, err := chwrapper.Connect()
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
 
+	// If chainID is specified, wipe data for that specific chain
+	if chainID > 0 {
+		if !all {
+			log.Fatalf("--chain flag requires --all flag to be set. Use: wipe --all --chain=%d", chainID)
+		}
+		if err := wipeChainData(conn, chainID); err != nil {
+			log.Fatalf("Failed to wipe chain %d data: %v", chainID, err)
+		}
+		fmt.Printf("All data for chain %d wiped successfully\n", chainID)
+		return
+	}
+
+	// Otherwise, wipe calculated tables as usual
 	if err := wipeCalculatedTables(conn, all); err != nil {
 		log.Fatalf("Failed to wipe tables: %v", err)
 	}
@@ -26,6 +39,44 @@ func RunWipe(all bool) {
 	} else {
 		fmt.Println("Calculated tables dropped successfully")
 	}
+}
+
+func wipeChainData(conn driver.Conn, chainID uint32) error {
+	ctx := context.Background()
+
+	tables := []string{
+		"raw_blocks",
+		"raw_txs",
+		"raw_traces",
+		"raw_logs",
+	}
+
+	fmt.Printf("Wiping data for chain %d...\n", chainID)
+
+	for _, table := range tables {
+		query := fmt.Sprintf("ALTER TABLE %s DELETE WHERE chain_id = %d", table, chainID)
+		fmt.Printf("Deleting from %s where chain_id = %d...\n", table, chainID)
+
+		if err := conn.Exec(ctx, query); err != nil {
+			return fmt.Errorf("failed to delete from %s: %w", table, err)
+		}
+	}
+
+	// Delete from sync_watermark
+	deleteWatermark := fmt.Sprintf("DELETE FROM sync_watermark WHERE chain_id = %d", chainID)
+	fmt.Printf("Deleting watermark for chain %d...\n", chainID)
+	if err := conn.Exec(ctx, deleteWatermark); err != nil {
+		return fmt.Errorf("failed to delete from sync_watermark: %w", err)
+	}
+
+	// Delete from chain_status
+	deleteStatus := fmt.Sprintf("ALTER TABLE chain_status DELETE WHERE chain_id = %d", chainID)
+	fmt.Printf("Deleting chain status for chain %d...\n", chainID)
+	if err := conn.Exec(ctx, deleteStatus); err != nil {
+		return fmt.Errorf("failed to delete from chain_status: %w", err)
+	}
+
+	return nil
 }
 
 func wipeCalculatedTables(conn driver.Conn, all bool) error {

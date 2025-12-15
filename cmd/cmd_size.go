@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"clickhouse-metrics-poc/pkg/chwrapper"
+	"icicle/pkg/chwrapper"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )

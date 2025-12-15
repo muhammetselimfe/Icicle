@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"clickhouse-metrics-poc/pkg/cache"
-	"clickhouse-metrics-poc/pkg/evmsyncer"
-	"clickhouse-metrics-poc/pkg/pchainsyncer"
+	"icicle/pkg/cache"
+	"icicle/pkg/evmsyncer"
+	"icicle/pkg/pchainsyncer"
 	"fmt"
 	"os"
 	"time"

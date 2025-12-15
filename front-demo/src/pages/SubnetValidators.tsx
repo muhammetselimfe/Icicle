@@ -4,16 +4,18 @@ import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import PageTransition from '../components/PageTransition';
 import { useClickhouseUrl } from '../hooks/useClickhouseUrl';
-import { 
-  ArrowLeft, 
-  Search, 
-  Server, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  ArrowLeft,
+  Search,
+  Server,
+  Clock,
+  CheckCircle,
+  XCircle,
   Activity,
   Wallet,
-  Copy
+  Copy,
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 
 interface Validator {
@@ -35,6 +37,10 @@ interface SubnetDetails {
   conversion_time: string;
   validator_count: number;
   total_weight: string;
+  name?: string;
+  description?: string;
+  logo_url?: string;
+  website_url?: string;
 }
 
 function SubnetValidators() {
@@ -54,14 +60,19 @@ function SubnetValidators() {
       const result = await clickhouse.query({
         query: `
           SELECT
-            subnet_id,
-            chain_id,
-            conversion_block,
-            formatDateTime(conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
-            (SELECT count(*) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count,
-            (SELECT toString(sum(weight)) FROM l1_validator_state WHERE subnet_id = l1_subnets.subnet_id AND active = true) as total_weight
-          FROM l1_subnets
-          WHERE subnet_id = '${subnetId}'
+            s.subnet_id,
+            s.chain_id,
+            s.conversion_block,
+            formatDateTime(s.conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
+            (SELECT count(*) FROM l1_validator_state WHERE subnet_id = s.subnet_id AND active = true) as validator_count,
+            (SELECT toString(sum(weight)) FROM l1_validator_state WHERE subnet_id = s.subnet_id AND active = true) as total_weight,
+            NULLIF(r.name, '') as name,
+            NULLIF(r.description, '') as description,
+            NULLIF(r.logo_url, '') as logo_url,
+            NULLIF(r.website_url, '') as website_url
+          FROM l1_subnets AS s FINAL
+          LEFT JOIN l1_registry AS r FINAL ON s.subnet_id = r.subnet_id
+          WHERE s.subnet_id = '${subnetId}'
           LIMIT 1
         `,
         format: 'JSONEachRow',
@@ -155,22 +166,49 @@ function SubnetValidators() {
           
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                  Subnet Details
-                  <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
-                    L1
-                  </span>
-                </h1>
-                <div className="mt-2 space-y-1">
-                  <p className="text-sm text-gray-500 font-mono">ID: {subnetDetails.subnet_id}</p>
-                  {subnetDetails.chain_id && (
-                    <p className="text-sm text-gray-500 font-mono">Chain ID: {subnetDetails.chain_id}</p>
+              <div className="flex-1">
+                <div className="flex items-start gap-4">
+                  {subnetDetails.logo_url && (
+                    <img
+                      src={subnetDetails.logo_url}
+                      alt={subnetDetails.name || 'Subnet logo'}
+                      className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
                   )}
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                      {subnetDetails.name || 'Subnet Details'}
+                      <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
+                        L1
+                      </span>
+                    </h1>
+                    {subnetDetails.description && (
+                      <p className="mt-2 text-sm text-gray-600 max-w-2xl">{subnetDetails.description}</p>
+                    )}
+                    <div className="mt-3 space-y-1">
+                      <p className="text-sm text-gray-500 font-mono">Subnet ID: {subnetDetails.subnet_id}</p>
+                      {subnetDetails.chain_id && (
+                        <p className="text-sm text-gray-500 font-mono">Chain ID: {subnetDetails.chain_id}</p>
+                      )}
+                      {subnetDetails.website_url && (
+                        <a
+                          href={subnetDetails.website_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          <Globe size={14} />
+                          {subnetDetails.website_url.replace(/^https?:\/\//, '')}
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-              
-              <div className="flex gap-6 text-right">
+
+              <div className="flex gap-6 text-right ml-6">
                 <div>
                   <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">Validators</p>
                   <p className="text-2xl font-bold text-gray-900">{subnetDetails.validator_count}</p>

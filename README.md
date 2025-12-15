@@ -1,4 +1,6 @@
-# Metrics API on ClickHouse
+# Icicle
+
+Fast Avalanche P-Chain & L1 Subnet Indexer
 
 ## Prerequisites
 

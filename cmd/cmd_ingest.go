@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"clickhouse-metrics-poc/pkg/cache"
-	"clickhouse-metrics-poc/pkg/chwrapper"
-	"clickhouse-metrics-poc/pkg/registrysyncer"
+	"icicle/pkg/cache"
+	"icicle/pkg/chwrapper"
+	"icicle/pkg/registrysyncer"
 	"context"
 	"log"
 	"sync"

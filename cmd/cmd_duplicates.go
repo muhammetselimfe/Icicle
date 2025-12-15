@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"clickhouse-metrics-poc/pkg/chwrapper"
+	"icicle/pkg/chwrapper"
 
 	"github.com/fatih/color"
 )

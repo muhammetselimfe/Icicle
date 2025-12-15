@@ -1,7 +1,7 @@
 package evmsyncer
 
 import (
-	"clickhouse-metrics-poc/pkg/evmrpc"
+	"icicle/pkg/evmrpc"
 	"context"
 	"encoding/json"
 	"fmt"

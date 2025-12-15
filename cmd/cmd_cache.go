@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"clickhouse-metrics-poc/pkg/cache"
-	"clickhouse-metrics-poc/pkg/evmrpc"
-	"clickhouse-metrics-poc/pkg/pchainrpc"
+	"icicle/pkg/cache"
+	"icicle/pkg/evmrpc"
+	"icicle/pkg/pchainrpc"
 	"fmt"
 	"log"
 	"sync"

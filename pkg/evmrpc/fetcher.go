@@ -2,7 +2,7 @@ package evmrpc
 
 import (
 	"bytes"
-	"clickhouse-metrics-poc/pkg/cache"
+	"icicle/pkg/cache"
 	"encoding/json"
 	"fmt"
 	"log"

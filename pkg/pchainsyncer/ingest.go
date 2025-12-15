@@ -1,7 +1,7 @@
 package pchainsyncer
 
 import (
-	"clickhouse-metrics-poc/pkg/pchainrpc"
+	"icicle/pkg/pchainrpc"
 	"context"
 	"fmt"
 	"time"

@@ -2,7 +2,7 @@ package pchainrpc
 
 import (
 	"bytes"
-	"clickhouse-metrics-poc/pkg/cache"
+	"icicle/pkg/cache"
 	"context"
 	"encoding/json"
 	"fmt"

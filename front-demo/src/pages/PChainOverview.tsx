@@ -30,6 +30,8 @@ interface L1Subnet {
   conversion_block: number;
   conversion_time: string;
   validator_count: number;
+  name?: string;
+  logo_url?: string;
 }
 
 interface PChainTx {
@@ -123,18 +125,30 @@ function PChainOverview() {
 
   // L1 Subnets Table
   const { data: subnets, isLoading: loadingSubnets } = useQuery<L1Subnet[]>({
-    queryKey: ['l1-subnets', url],
+    queryKey: ['l1-subnets-v4', url],
     queryFn: async () => {
       const result = await clickhouse.query({
         query: `
+          WITH validator_counts AS (
+            SELECT
+              subnet_id,
+              count(*) as validator_count
+            FROM l1_validator_state FINAL
+            WHERE active = true
+            GROUP BY subnet_id
+          )
           SELECT
-            subnet_id,
-            chain_id,
-            conversion_block,
-            formatDateTime(conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
-            (SELECT count(*) FROM l1_validator_state FINAL WHERE subnet_id = l1_subnets.subnet_id AND active = true) as validator_count
-          FROM l1_subnets FINAL
-          ORDER BY conversion_time DESC
+            s.subnet_id as subnet_id,
+            s.chain_id as chain_id,
+            s.conversion_block as conversion_block,
+            formatDateTime(s.conversion_time, '%Y-%m-%d %H:%i:%s') as conversion_time,
+            COALESCE(v.validator_count, 0) as validator_count,
+            NULLIF(r.name, '') as name,
+            NULLIF(r.logo_url, '') as logo_url
+          FROM l1_subnets AS s FINAL
+          LEFT JOIN l1_registry AS r FINAL ON s.subnet_id = r.subnet_id
+          LEFT JOIN validator_counts AS v ON s.subnet_id = v.subnet_id
+          ORDER BY validator_count DESC, s.conversion_time DESC
         `,
         format: 'JSONEachRow',
       });
@@ -211,7 +225,7 @@ function PChainOverview() {
       <div className="p-8 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">P-Chain Overview</h1>
+          <h1 className="text-3xl font-bold text-gray-900">P-Chain Overview (v2)</h1>
           <p className="text-gray-600 mt-2">
             Platform chain for L1 subnet creation and validator management
           </p>
@@ -353,6 +367,9 @@ function PChainOverview() {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Subnet ID
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -375,6 +392,21 @@ function PChainOverview() {
                 <tbody className="divide-y divide-gray-200">
                   {subnets.map((subnet, idx) => (
                     <tr key={subnet.subnet_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {subnet.logo_url && (
+                            <img
+                              src={subnet.logo_url}
+                              alt={subnet.name || 'Subnet logo'}
+                              className="w-6 h-6 rounded-full object-cover"
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          )}
+                          <span className={`text-sm ${subnet.name ? 'font-medium text-gray-900' : 'font-mono text-gray-500'}`}>
+                            {subnet.name || truncateHash(subnet.subnet_id, 10)}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <code className="text-xs font-mono text-gray-900">
