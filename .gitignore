@@ -10,3 +10,4 @@ clickhouse-metrics-poc-linux
 # AI/LLM context files
 CLAUDE.md
 .docs/
+icicle
