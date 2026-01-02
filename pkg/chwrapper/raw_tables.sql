@@ -123,7 +123,7 @@ PRIMARY KEY chain_id;
 -- P-chain transactions table - simplified schema using ClickHouse JSON type
 CREATE TABLE IF NOT EXISTS p_chain_txs (
     -- Core indexed columns for efficient queries
-    tx_id FixedString(32),
+    tx_id String,  -- CB58-encoded transaction ID (e.g., "22FdhKfCTTWTfgBWiibGo8x2pEaCeWLdwHwwDCvK9M7eyxxNeV")
     tx_type LowCardinality(String),
     block_number UInt64,
     block_time DateTime64(3, 'UTC'),
@@ -162,8 +162,12 @@ CREATE TABLE IF NOT EXISTS p_chain_txs (
         -- SourceChain String,
         -- DestinationChain String
     )
-) ENGINE = MergeTree()
-ORDER BY (p_chain_id, block_time, block_number, tx_type);
+) ENGINE = ReplacingMergeTree(block_time)
+ORDER BY (p_chain_id, tx_id);
+-- Note: Using ReplacingMergeTree to deduplicate transactions that may be inserted multiple times
+-- during syncer restarts. ORDER BY tx_id ensures uniqueness per transaction.
+-- IMPORTANT: For existing tables, use FINAL or DISTINCT in queries to get deduplicated results.
+-- Migration note: If migrating from MergeTree, recreate table and re-sync data.
 
 -- L1 Validator State table - tracks current state of L1 validators
 CREATE TABLE IF NOT EXISTS l1_validator_state (
@@ -181,6 +185,12 @@ CREATE TABLE IF NOT EXISTS l1_validator_state (
 
     -- Status
     active Bool,  -- Whether validator is currently active
+
+    -- Fee tracking (computed from balance transactions)
+    initial_deposit UInt64 DEFAULT 0,  -- Initial balance at creation (in nAVAX)
+    total_topups UInt64 DEFAULT 0,  -- Sum of all top-up transactions (in nAVAX)
+    refund_amount UInt64 DEFAULT 0,  -- Refund when disabled (in nAVAX)
+    fees_paid UInt64 DEFAULT 0,  -- Total fees consumed (deposited - refunded - balance)
 
     -- Metadata
     last_updated DateTime64(3, 'UTC'),  -- When this state was last updated
@@ -209,3 +219,136 @@ CREATE TABLE IF NOT EXISTS l1_registry (
     last_updated DateTime64(3, 'UTC')
 ) ENGINE = ReplacingMergeTree(last_updated)
 PRIMARY KEY subnet_id;
+
+-- Unified Subnets table - tracks all subnets with their lifecycle status
+CREATE TABLE IF NOT EXISTS subnets (
+    subnet_id String,  -- The subnet ID (CB58)
+
+    -- Creation info (from CreateSubnetTx)
+    created_block UInt64,  -- Block number when subnet was created
+    created_time DateTime64(3, 'UTC'),  -- When subnet was created
+
+    -- Subnet type/status
+    subnet_type LowCardinality(String),  -- 'regular', 'elastic', 'l1'
+
+    -- L1/Elastic conversion info (nullable, populated when converted)
+    chain_id String,  -- Associated chain ID (empty for non-L1 subnets)
+    converted_block UInt64,  -- Block number when converted (0 if not converted)
+    converted_time DateTime64(3, 'UTC'),  -- When converted (epoch 0 if not converted)
+
+    -- Metadata
+    p_chain_id UInt32,  -- Which P-chain instance
+    last_updated DateTime64(3, 'UTC')  -- Last time this record was updated
+) ENGINE = ReplacingMergeTree(last_updated)
+PRIMARY KEY (p_chain_id, subnet_id);
+
+-- Subnet Chains table - tracks blockchains created within subnets
+CREATE TABLE IF NOT EXISTS subnet_chains (
+    chain_id String,  -- The blockchain ID (CB58)
+    subnet_id String,  -- Parent subnet ID (CB58)
+    chain_name String,  -- Chain name
+    vm_id String,  -- VM ID (CB58)
+    created_block UInt64,  -- Block number when chain was created
+    created_time DateTime64(3, 'UTC'),  -- When chain was created
+    p_chain_id UInt32,  -- Which P-chain instance
+    last_updated DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(last_updated)
+PRIMARY KEY (p_chain_id, chain_id);
+
+-- L1 Fee Stats table - tracks total validation fees paid per L1
+CREATE TABLE IF NOT EXISTS l1_fee_stats (
+    subnet_id String,  -- The L1 subnet ID (CB58)
+
+    -- Deposit tracking (all values in nAVAX)
+    total_deposited UInt64,  -- Total AVAX deposited across all validators
+    initial_deposits UInt64,  -- From ConvertSubnetToL1Tx + RegisterL1ValidatorTx
+    top_up_deposits UInt64,  -- From IncreaseL1ValidatorBalanceTx
+    total_refunded UInt64 DEFAULT 0,  -- Total refunds from DisableL1Validator
+
+    -- Current state
+    current_balance UInt64,  -- Sum of current remaining balances
+
+    -- Calculated fee (deposited - refunded - current balance)
+    total_fees_paid UInt64,  -- Total fees consumed by validators
+
+    -- Counts
+    deposit_tx_count UInt32,  -- Number of deposit transactions
+    validator_count UInt32,  -- Number of validators (active + inactive)
+
+    -- Metadata
+    p_chain_id UInt32,
+    last_updated DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(last_updated)
+PRIMARY KEY (p_chain_id, subnet_id);
+
+-- L1 Validator History table - tracks all L1 validators from creation
+CREATE TABLE IF NOT EXISTS l1_validator_history (
+    -- Identifiers
+    subnet_id String,  -- The L1 subnet ID (CB58)
+    node_id String,  -- Node ID (CB58 format, e.g., "NodeID-xxx...")
+    validation_id String,  -- Computed validation ID (CB58)
+
+    -- Creation info
+    created_tx_id String,  -- Transaction that created this validator
+    created_tx_type LowCardinality(String),  -- 'ConvertSubnetToL1' or 'RegisterL1Validator'
+    created_block UInt64,  -- Block when validator was created
+    created_time DateTime64(3, 'UTC'),  -- When validator was created
+
+    -- Initial values at creation
+    initial_balance UInt64,  -- Balance at creation (in nAVAX)
+    initial_weight UInt64,  -- Weight at creation
+
+    -- BLS key info (from creation tx)
+    bls_public_key String,  -- BLS public key (hex)
+
+    -- Owner info (for refunds when disabled)
+    remaining_balance_owner String,  -- P-Chain address to receive remaining balance (CB58)
+
+    -- Metadata
+    p_chain_id UInt32,
+    last_updated DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(last_updated)
+ORDER BY (p_chain_id, subnet_id, node_id, created_block);
+
+-- L1 Validator Balance Transactions table - tracks all balance-affecting transactions
+-- Indexed by validation_id and node_id for fast lookups from frontend
+CREATE TABLE IF NOT EXISTS l1_validator_balance_txs (
+    -- Identifiers
+    validation_id String,  -- The validation ID (CB58), may be empty for disabled validators
+    tx_id String,  -- Transaction ID
+    tx_type LowCardinality(String),  -- 'ConvertSubnetToL1', 'RegisterL1Validator', or 'IncreaseL1ValidatorBalance'
+
+    -- Transaction details
+    block_number UInt64,
+    block_time DateTime64(3, 'UTC'),
+    amount UInt64,  -- Amount added to balance (in nAVAX)
+
+    -- Additional context
+    subnet_id String,  -- For filtering by subnet
+    node_id String,  -- For correlation with validator
+
+    -- Metadata
+    p_chain_id UInt32,
+    inserted_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(inserted_at)
+ORDER BY (p_chain_id, node_id, tx_id);
+
+-- L1 Validator Refunds table - tracks refunds when validators are disabled
+CREATE TABLE IF NOT EXISTS l1_validator_refunds (
+    -- Identifiers
+    tx_id String,  -- DisableL1Validator transaction ID
+    validation_id String,  -- The validation ID (CB58)
+    subnet_id String,  -- The L1 subnet ID (CB58)
+
+    -- Refund details
+    refund_amount UInt64,  -- Actual refund amount (in nAVAX)
+    refund_address String,  -- Address that received the refund (remainingBalanceOwner)
+
+    -- Transaction details
+    block_number UInt64,
+    block_time DateTime64(3, 'UTC'),
+
+    -- Metadata
+    p_chain_id UInt32
+) ENGINE = ReplacingMergeTree(block_time)
+ORDER BY (p_chain_id, validation_id, tx_id);

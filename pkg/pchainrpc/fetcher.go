@@ -4,21 +4,68 @@ import (
 	"bytes"
 	"icicle/pkg/cache"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/cb58"
+	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 )
+
+// ConvertCB58ToPChainAddress converts a short CB58 address to P-Chain bech32 format
+// e.g., "AhRtxbQdas3HyjjTXjL49CgZpF7eaSYCp" -> "P-avax1..."
+func ConvertCB58ToPChainAddress(shortAddr string) (string, error) {
+	// If already in P-avax format, return as-is
+	if strings.HasPrefix(shortAddr, "P-avax") || strings.HasPrefix(shortAddr, "P-fuji") || strings.HasPrefix(shortAddr, "P-local") {
+		return shortAddr, nil
+	}
+
+	// Decode CB58 to bytes
+	addrBytes, err := cb58.Decode(shortAddr)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode CB58 address %s: %w", shortAddr, err)
+	}
+
+	// Format as bech32 with "avax" HRP (mainnet)
+	bech32Addr, err := address.FormatBech32("avax", addrBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to format bech32 address: %w", err)
+	}
+
+	// Prepend P- for P-Chain
+	return "P-" + bech32Addr, nil
+}
+
+// ConvertCB58ToPChainAddressFuji converts a short CB58 address to P-Chain bech32 format for Fuji testnet
+func ConvertCB58ToPChainAddressFuji(shortAddr string) (string, error) {
+	if strings.HasPrefix(shortAddr, "P-") {
+		return shortAddr, nil
+	}
+
+	addrBytes, err := cb58.Decode(shortAddr)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode CB58 address %s: %w", shortAddr, err)
+	}
+
+	bech32Addr, err := address.FormatBech32("fuji", addrBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to format bech32 address: %w", err)
+	}
+
+	return "P-" + bech32Addr, nil
+}
 
 type FetcherOptions struct {
 	RpcURL         string
@@ -28,6 +75,7 @@ type FetcherOptions struct {
 	RetryDelay     time.Duration // Initial retry delay
 	Cache          *cache.Cache  // Optional cache for complete blocks
 }
+
 
 // pooledRequester implements EndpointRequester with proper connection pooling
 type pooledRequester struct {
@@ -419,33 +467,72 @@ func (te *timestampExtractor) BanffStandardBlock(b *block.BanffStandardBlock) er
 }
 
 func (te *timestampExtractor) ApricotAbortBlock(b *block.ApricotAbortBlock) error {
-	// Apricot blocks don't have timestamps - use zero time
+	// Apricot blocks store timestamps differently - mark for parent timestamp lookup
 	te.timestamp = time.Time{}
 	return nil
 }
 
 func (te *timestampExtractor) ApricotCommitBlock(b *block.ApricotCommitBlock) error {
-	// Apricot blocks don't have timestamps - use zero time
+	// Apricot blocks store timestamps differently - mark for parent timestamp lookup
 	te.timestamp = time.Time{}
 	return nil
 }
 
 func (te *timestampExtractor) ApricotProposalBlock(b *block.ApricotProposalBlock) error {
-	// Apricot blocks don't have timestamps - use zero time
+	// Apricot blocks store timestamps differently - mark for parent timestamp lookup
 	te.timestamp = time.Time{}
 	return nil
 }
 
 func (te *timestampExtractor) ApricotStandardBlock(b *block.ApricotStandardBlock) error {
-	// Apricot blocks don't have timestamps - use zero time
+	// Apricot blocks store timestamps differently - mark for parent timestamp lookup
 	te.timestamp = time.Time{}
 	return nil
 }
 
 func (te *timestampExtractor) ApricotAtomicBlock(b *block.ApricotAtomicBlock) error {
-	// Apricot blocks don't have timestamps - use zero time
+	// Apricot blocks store timestamps differently - mark for parent timestamp lookup
 	te.timestamp = time.Time{}
 	return nil
+}
+
+// findTimestampForApricotBlock searches backwards to find the most recent AdvanceTimeTx
+// that established the chain timestamp for this block
+func (f *Fetcher) findTimestampForApricotBlock(currentHeight uint64) (time.Time, error) {
+	// Search backwards up to 100 blocks or until we find an AdvanceTimeTx
+	// AdvanceTimeTx typically appear every few blocks in Apricot era
+	maxLookback := uint64(100)
+	startHeight := uint64(0)
+	if currentHeight > maxLookback {
+		startHeight = currentHeight - maxLookback
+	}
+
+	for height := currentHeight; height >= startHeight && height > 0; height-- {
+		blockBytes, err := f.client.GetBlockByHeight(context.Background(), height)
+		if err != nil {
+			continue // Skip errors and keep searching
+		}
+
+		blk, err := block.Parse(block.Codec, blockBytes)
+		if err != nil {
+			continue
+		}
+
+		// Check all transactions in this block for AdvanceTimeTx
+		for _, tx := range blk.Txs() {
+			if tx.Unsigned == nil {
+				continue
+			}
+			if advTimeTx, ok := tx.Unsigned.(*txs.AdvanceTimeTx); ok {
+				return advTimeTx.Timestamp(), nil
+			}
+		}
+	}
+
+	// If no AdvanceTimeTx found in lookback window, estimate based on height
+	mainnetLaunch := time.Date(2020, 9, 21, 0, 0, 0, 0, time.UTC)
+	estimatedSeconds := int64(currentHeight) * 2
+	return mainnetLaunch.Add(time.Duration(estimatedSeconds) * time.Second), nil
 }
 
 // normalizeBlock converts a platform block to normalized structure
@@ -456,6 +543,44 @@ func (f *Fetcher) normalizeBlock(blk block.Block) (*NormalizedBlock, error) {
 		return nil, fmt.Errorf("failed to extract timestamp: %w", err)
 	}
 	blockTime := extractor.timestamp
+
+	// Debug logging for specific block
+	if blk.Height() == 1570934 {
+		log.Printf("[DEBUG] Block 1570934 - Block type: %T", blk)
+		log.Printf("[DEBUG] Block 1570934 - Initial timestamp from visitor: %v (IsZero=%v)", blockTime, blockTime.IsZero())
+	}
+
+	// For Apricot blocks (pre-Banff), find exact timestamp from AdvanceTimeTx
+	// The P-Chain maintains a chain-level timestamp that's updated via AdvanceTimeTx
+	if blockTime.IsZero() {
+		// First check if this block itself contains an AdvanceTimeTx
+		for _, tx := range blk.Txs() {
+			if tx.Unsigned == nil {
+				continue
+			}
+			if advTimeTx, ok := tx.Unsigned.(*txs.AdvanceTimeTx); ok {
+				blockTime = advTimeTx.Timestamp()
+				if blk.Height() == 1570934 {
+					log.Printf("[DEBUG] Block 1570934 - Found AdvanceTimeTx in block: %v", blockTime)
+				}
+				break
+			}
+		}
+
+		// If not found, search backwards for the most recent AdvanceTimeTx
+		if blockTime.IsZero() && blk.Height() > 0 {
+			var err error
+			blockTime, err = f.findTimestampForApricotBlock(blk.Height())
+			if err != nil {
+				return nil, fmt.Errorf("failed to find timestamp for Apricot block: %w", err)
+			}
+			if blk.Height() == 1570934 {
+				log.Printf("[DEBUG] Block 1570934 - Timestamp from backward search: %v", blockTime)
+			}
+		}
+	} else if blk.Height() == 1570934 {
+		log.Printf("[DEBUG] Block 1570934 - Using Banff timestamp: %v", blockTime)
+	}
 
 	normalized := &NormalizedBlock{
 		BlockID:      blk.ID(),
@@ -621,6 +746,15 @@ func (f *Fetcher) normalizeBlockToJSON(blk block.Block) (*JSONBlock, error) {
 		return nil, fmt.Errorf("failed to extract timestamp: %w", err)
 	}
 	blockTime := extractor.timestamp
+
+	// Estimate timestamp for old Apricot blocks
+	// Note: Apricot blocks use AdvanceTimeTx for timestamps, which requires complex tracking
+	// For simplicity, we estimate based on block height (~2 sec/block average)
+	if blockTime.IsZero() && blk.Height() > 0 {
+		mainnetLaunch := time.Date(2020, 9, 21, 0, 0, 0, 0, time.UTC)
+		estimatedSeconds := int64(blk.Height()) * 2
+		blockTime = mainnetLaunch.Add(time.Duration(estimatedSeconds) * time.Second)
+	}
 
 	jsonBlock := &JSONBlock{
 		BlockID:      blk.ID(),
@@ -933,10 +1067,56 @@ func (f *Fetcher) GetCurrentValidators(ctx context.Context, subnetID string) (*G
 
 // ParseValidatorInfo converts RPC ValidatorInfo to normalized ValidatorState
 func ParseValidatorInfo(info ValidatorInfo, subnetID ids.ID) (*ValidatorState, error) {
-	// Parse NodeID
-	nodeID, err := ids.NodeIDFromString(info.NodeID)
+	// Parse NodeID - handle both CB58 and hex formats
+	// L1 validators may return node IDs in hex format (0x prefix or raw hex)
+	var nodeID ids.NodeID
+	var err error
+
+	nodeIDStr := info.NodeID
+
+	// Check if it's a hex-encoded node ID (common for L1 validators)
+	if strings.HasPrefix(nodeIDStr, "0x") || strings.HasPrefix(nodeIDStr, "0X") {
+		// Remove 0x prefix and decode hex
+		hexStr := strings.TrimPrefix(strings.TrimPrefix(nodeIDStr, "0x"), "0X")
+		nodeBytes, hexErr := hex.DecodeString(hexStr)
+		if hexErr != nil {
+			return nil, fmt.Errorf("failed to decode hex node ID %s: %w", nodeIDStr, hexErr)
+		}
+		if len(nodeBytes) != 20 {
+			return nil, fmt.Errorf("invalid hex node ID length %d (expected 20): %s", len(nodeBytes), nodeIDStr)
+		}
+		copy(nodeID[:], nodeBytes)
+		log.Printf("DEBUG: Converted hex NodeID %s to CB58 %s", nodeIDStr, nodeID.String())
+	} else if strings.HasPrefix(nodeIDStr, "NodeID-") {
+		// Check if the suffix looks like hex (40 hex chars = 20 bytes)
+		suffix := strings.TrimPrefix(nodeIDStr, "NodeID-")
+		if len(suffix) == 40 && isHexString(suffix) {
+			// It's hex format disguised as NodeID- prefix
+			nodeBytes, hexErr := hex.DecodeString(suffix)
+			if hexErr == nil && len(nodeBytes) == 20 {
+				copy(nodeID[:], nodeBytes)
+				log.Printf("DEBUG: Converted hex NodeID %s to CB58 %s", nodeIDStr, nodeID.String())
+			} else {
+				// Fall back to standard parsing
+				nodeID, err = ids.NodeIDFromString(nodeIDStr)
+			}
+		} else {
+			// Standard CB58 format
+			nodeID, err = ids.NodeIDFromString(nodeIDStr)
+		}
+	} else {
+		// Try standard parsing
+		nodeID, err = ids.NodeIDFromString(nodeIDStr)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse node ID %s: %w", info.NodeID, err)
+		return nil, fmt.Errorf("failed to parse node ID %s: %w", nodeIDStr, err)
+	}
+
+	// Validate the resulting NodeID string has proper length
+	nodeIDResult := nodeID.String()
+	if len(nodeIDResult) < 35 {
+		return nil, fmt.Errorf("parsed node ID too short (%d chars): input=%s output=%s", len(nodeIDResult), nodeIDStr, nodeIDResult)
 	}
 
 	// Parse weight using strconv for better handling of large uint64 values
@@ -978,6 +1158,15 @@ func ParseValidatorInfo(info ValidatorInfo, subnetID ids.ID) (*ValidatorState, e
 		}
 	}
 
+	// Determine active status:
+	// - For L1 validators (have ValidationID): active if balance > 0
+	// - For non-L1 validators: active if returned by getCurrentValidators
+	isL1Validator := info.ValidationID != ""
+	active := true
+	if isL1Validator && balance == 0 {
+		active = false // L1 validators with 0 balance cannot validate
+	}
+
 	state := &ValidatorState{
 		ValidationID: validationID,
 		NodeID:       nodeID,
@@ -985,7 +1174,7 @@ func ParseValidatorInfo(info ValidatorInfo, subnetID ids.ID) (*ValidatorState, e
 		Weight:       weight,
 		Balance:      balance,
 		Uptime:       uptime,
-		Active:       true, // If returned by getCurrentValidators, it is active. info.Connected is just p2p status.
+		Active:       active,
 	}
 
 	// Parse StartTime
@@ -1033,8 +1222,191 @@ func parseFloat64Field(value string, fieldName string) (float64, error) {
 	return parsed, nil
 }
 
+// isHexString checks if a string contains only hexadecimal characters
+func isHexString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // Close stops all background goroutines and cleans up resources
 func (f *Fetcher) Close() {
 	// P-Chain fetcher doesn't have background goroutines currently,
 	// but this method is provided for consistency and future-proofing
+}
+
+// GetUTXOsResponse represents the response from platform.getUTXOs
+type GetUTXOsResponse struct {
+	NumFetched string   `json:"numFetched"`
+	UTXOs      []string `json:"utxos"`
+	EndIndex   struct {
+		Address string `json:"address"`
+		UTXO    string `json:"utxo"`
+	} `json:"endIndex"`
+	Encoding string `json:"encoding"`
+}
+
+// GetUTXOs fetches UTXOs for the given addresses
+func (f *Fetcher) GetUTXOs(ctx context.Context, addresses []string) (*GetUTXOsResponse, error) {
+	params := map[string]interface{}{
+		"addresses": addresses,
+		"limit":     1024,
+		"encoding":  "hex",
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			time.Sleep(delay)
+		}
+
+		var response GetUTXOsResponse
+		err := f.client.Requester.SendRequest(
+			ctx,
+			"platform.getUTXOs",
+			params,
+			&response,
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return &response, nil
+	}
+
+	return nil, fmt.Errorf("failed to get UTXOs after %d retries: %w", f.maxRetries, lastErr)
+}
+
+// ParsedUTXO represents a parsed UTXO with its components
+type ParsedUTXO struct {
+	TxID        ids.ID
+	OutputIndex uint32
+	Amount      uint64
+}
+
+// ParseUTXOHex parses a hex-encoded UTXO and extracts txID, outputIndex, and amount
+func ParseUTXOHex(utxoHex string) (*ParsedUTXO, error) {
+	// Remove 0x prefix if present
+	utxoHex = strings.TrimPrefix(utxoHex, "0x")
+
+	utxoBytes, err := hex.DecodeString(utxoHex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode UTXO hex: %w", err)
+	}
+
+	// UTXO format: codecID (2) + txID (32) + outputIndex (4) + output
+	if len(utxoBytes) < 38 {
+		return nil, fmt.Errorf("UTXO too short: %d bytes", len(utxoBytes))
+	}
+
+	// Extract txID (bytes 2-34)
+	var txID ids.ID
+	copy(txID[:], utxoBytes[2:34])
+
+	// Extract outputIndex (bytes 34-38, big endian)
+	outputIndex := uint32(utxoBytes[34])<<24 | uint32(utxoBytes[35])<<16 | uint32(utxoBytes[36])<<8 | uint32(utxoBytes[37])
+
+	// Extract amount from output
+	// Output format: assetID (32) + typeID (4) + amount (8) + ...
+	// Amount is at offset 38 + 32 + 4 = 74
+	if len(utxoBytes) < 82 {
+		return nil, fmt.Errorf("UTXO too short for amount: %d bytes", len(utxoBytes))
+	}
+
+	amountBytes := utxoBytes[74:82]
+	amount := uint64(amountBytes[0])<<56 | uint64(amountBytes[1])<<48 | uint64(amountBytes[2])<<40 | uint64(amountBytes[3])<<32 |
+		uint64(amountBytes[4])<<24 | uint64(amountBytes[5])<<16 | uint64(amountBytes[6])<<8 | uint64(amountBytes[7])
+
+	return &ParsedUTXO{
+		TxID:        txID,
+		OutputIndex: outputIndex,
+		Amount:      amount,
+	}, nil
+}
+
+// FindRefundUTXO searches UTXOs for a specific txID and outputIndex
+func (f *Fetcher) FindRefundUTXO(ctx context.Context, addresses []string, targetTxID ids.ID, targetOutputIndex uint32) (*ParsedUTXO, error) {
+	response, err := f.GetUTXOs(ctx, addresses)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, utxoHex := range response.UTXOs {
+		parsed, err := ParseUTXOHex(utxoHex)
+		if err != nil {
+			continue // Skip malformed UTXOs
+		}
+
+		if parsed.TxID == targetTxID && parsed.OutputIndex == targetOutputIndex {
+			return parsed, nil
+		}
+	}
+
+	return nil, fmt.Errorf("refund UTXO not found for txID %s outputIndex %d", targetTxID, targetOutputIndex)
+}
+
+// GetL1ValidatorResponse represents the response from platform.getL1Validator
+type GetL1ValidatorResponse struct {
+	NodeID               string `json:"nodeID"`
+	Weight               string `json:"weight"`
+	StartTime            string `json:"startTime"`
+	ValidationID         string `json:"validationID"`
+	PublicKey            string `json:"publicKey"`
+	RemainingBalanceOwner struct {
+		Locktime  string   `json:"locktime"`
+		Threshold string   `json:"threshold"`
+		Addresses []string `json:"addresses"`
+	} `json:"remainingBalanceOwner"`
+	DeactivationOwner struct {
+		Locktime  string   `json:"locktime"`
+		Threshold string   `json:"threshold"`
+		Addresses []string `json:"addresses"`
+	} `json:"deactivationOwner"`
+	MinNonce  string `json:"minNonce"`
+	Balance   string `json:"balance"`
+	SubnetID  string `json:"subnetID"`
+	Height    string `json:"height"`
+}
+
+// GetL1Validator fetches L1 validator info including remainingBalanceOwner
+func (f *Fetcher) GetL1Validator(ctx context.Context, validationID string) (*GetL1ValidatorResponse, error) {
+	params := map[string]interface{}{
+		"validationID": validationID,
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			time.Sleep(delay)
+		}
+
+		var response GetL1ValidatorResponse
+		err := f.client.Requester.SendRequest(
+			ctx,
+			"platform.getL1Validator",
+			params,
+			&response,
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return &response, nil
+	}
+
+	return nil, fmt.Errorf("failed to get L1 validator %s after %d retries: %w", validationID, f.maxRetries, lastErr)
 }

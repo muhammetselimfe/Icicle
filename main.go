@@ -19,11 +19,13 @@ func main() {
 		Run: func(command *cobra.Command, args []string) {
 			all, _ := command.Flags().GetBool("all")
 			chainID, _ := command.Flags().GetUint32("chain")
-			cmd.RunWipe(all, chainID)
+			pchain, _ := command.Flags().GetBool("pchain")
+			cmd.RunWipe(all, chainID, pchain)
 		},
 	}
 	wipeCmd.Flags().Bool("all", false, "Drop all tables including raw_* tables")
 	wipeCmd.Flags().Uint32("chain", 0, "Wipe data for a specific chain ID only")
+	wipeCmd.Flags().Bool("pchain", false, "Wipe P-chain calculated tables (validator history, fee stats, subnets)")
 
 	ingestCmd := &cobra.Command{
 		Use:   "ingest",

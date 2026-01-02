@@ -31,14 +31,16 @@ function SyncStatus() {
   const { data: chainTxCounts } = useQuery<ChainTxCount[]>({
     queryKey: ['chainTxCounts', url],
     queryFn: async () => {
+      // Use system.parts to get row counts without scanning data
       const result = await clickhouse.query({
         query: `
-          SELECT 
-            chain_id,
-            count() as tx_count
-          FROM raw_txs
-          GROUP BY chain_id
-          ORDER BY chain_id
+          SELECT
+            0 as chain_id,
+            sum(rows) as tx_count
+          FROM system.parts
+          WHERE active
+            AND database = currentDatabase()
+            AND table = 'p_chain_txs'
         `,
         format: 'JSONEachRow',
       });

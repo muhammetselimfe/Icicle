@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <profiles>
+        <web_readonly>
+            <readonly>1</readonly>
+            <max_rows_to_read>0</max_rows_to_read>
+            <max_result_rows>0</max_result_rows>
+            <max_result_bytes>0</max_result_bytes>
+            <max_execution_time>60</max_execution_time>
+        </web_readonly>
+    </profiles>
+    <users>
+        <anonymous>
+            <no_password/>
+            <profile>web_readonly</profile>
+            <quota>default</quota>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+        </anonymous>
+    </users>
+</clickhouse>

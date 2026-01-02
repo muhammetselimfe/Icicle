@@ -1,6 +1,7 @@
 package pchainrpc
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"time"
@@ -170,17 +171,17 @@ type GetCurrentValidatorsResponse struct {
 
 // ValidatorInfo represents validator information from RPC
 type ValidatorInfo struct {
-	TxID             string  `json:"txID"`
-	StartTime        string  `json:"startTime"` // Changed to string because RPC returns it as string sometimes
-	EndTime          string  `json:"endTime"`   // Changed to string because RPC returns it as string sometimes
-	Weight           string  `json:"weight"`    // String because it can be large
-	NodeID           string  `json:"nodeID"`
-	ValidationID     string  `json:"validationID,omitempty"` // For L1 validators
-	Balance          string  `json:"balance,omitempty"`      // For L1 validators
-	Uptime           string  `json:"uptime,omitempty"`       // Percentage as string
-	Connected        bool    `json:"connected"`
-	Signer           *string `json:"signer,omitempty"`
-	DelegationFee    string  `json:"delegationFee,omitempty"`
-	PotentialReward  string  `json:"potentialReward,omitempty"`
-	AccruedDelegatee string  `json:"accruedDelegatee,omitempty"`
+	TxID             string          `json:"txID"`
+	StartTime        string          `json:"startTime"` // Changed to string because RPC returns it as string sometimes
+	EndTime          string          `json:"endTime"`   // Changed to string because RPC returns it as string sometimes
+	Weight           string          `json:"weight"`    // String because it can be large
+	NodeID           string          `json:"nodeID"`
+	ValidationID     string          `json:"validationID,omitempty"` // For L1 validators
+	Balance          string          `json:"balance,omitempty"`      // For L1 validators
+	Uptime           string          `json:"uptime,omitempty"`       // Percentage as string
+	Connected        bool            `json:"connected"`
+	Signer           json.RawMessage `json:"signer,omitempty"` // Can be string (L1) or object (Primary Network BLS)
+	DelegationFee    string          `json:"delegationFee,omitempty"`
+	PotentialReward  string          `json:"potentialReward,omitempty"`
+	AccruedDelegatee string          `json:"accruedDelegatee,omitempty"`
 }
