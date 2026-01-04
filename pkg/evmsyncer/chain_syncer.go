@@ -29,6 +29,8 @@ type Config struct {
 	StartBlock     int64        // Starting block number when no watermark exists, default 68000000
 	MaxConcurrency int          // Maximum concurrent RPC and debug requests, default 20
 	FetchBatchSize int          // Blocks per fetch, default 100
+	RpcBatchSize   int          // RPC calls per HTTP request, default 100
+	DebugBatchSize int          // Debug/trace calls per HTTP request, default 15
 	CHConn         driver.Conn  // ClickHouse connection
 	Cache          *cache.Cache // Cache for RPC calls
 	Name           string       // Chain name for display and tracking
@@ -80,6 +82,12 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 	if cfg.StartBlock == 0 {
 		cfg.StartBlock = 1
 	}
+	if cfg.RpcBatchSize == 0 {
+		cfg.RpcBatchSize = 100 // Default: batch 100 RPC calls per HTTP request
+	}
+	if cfg.DebugBatchSize == 0 {
+		cfg.DebugBatchSize = 15 // Default: batch 15 trace calls per HTTP request
+	}
 
 	// Create fetcher
 	fetcher := evmrpc.NewFetcher(evmrpc.FetcherOptions{
@@ -87,8 +95,8 @@ func NewChainSyncer(cfg Config) (*ChainSyncer, error) {
 		MaxConcurrency: cfg.MaxConcurrency,
 		MaxRetries:     100,
 		RetryDelay:     100 * time.Millisecond,
-		BatchSize:      1,
-		DebugBatchSize: 1,
+		BatchSize:      cfg.RpcBatchSize,
+		DebugBatchSize: cfg.DebugBatchSize,
 		Cache:          cfg.Cache,
 	})
 

@@ -5,6 +5,9 @@
   maxConcurrency: 256
   name: C-Chain
   vm: evm
+  # RPC batching settings (EVM only)
+  rpcBatchSize: 100    # RPC calls per HTTP request (default: 100)
+  debugBatchSize: 15   # Trace calls per HTTP request (default: 15)
 
 - chainID: 0
   rpcURL: http://127.0.0.1:9650

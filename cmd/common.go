@@ -22,6 +22,10 @@ type ChainConfig struct {
 	MaxConcurrency int    `yaml:"maxConcurrency"`
 	Name           string `yaml:"name"`
 
+	// EVM-specific config for RPC batching
+	RpcBatchSize   int `yaml:"rpcBatchSize"`   // RPC calls per HTTP request (default: 100)
+	DebugBatchSize int `yaml:"debugBatchSize"` // Debug/trace calls per HTTP request (default: 15)
+
 	// P-chain specific config
 	EnableValidatorSync   bool `yaml:"enableValidatorSync"`   // Enable L1 validator state syncing
 	ValidatorSyncInterval int  `yaml:"validatorSyncInterval"` // Validator sync interval in minutes (default: 5)
@@ -77,6 +81,8 @@ func CreateSyncer(cfg ChainConfig, conn driver.Conn, cacheInstance *cache.Cache,
 			CHConn:         conn,
 			Cache:          cacheInstance,
 			FetchBatchSize: cfg.FetchBatchSize,
+			RpcBatchSize:   cfg.RpcBatchSize,
+			DebugBatchSize: cfg.DebugBatchSize,
 			Name:           cfg.Name,
 			Fast:           fast,
 		})
