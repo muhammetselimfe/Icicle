@@ -28,8 +28,9 @@ func Connect() (driver.Conn, error) {
 				},
 			},
 			// Connection pool settings for high-throughput sync
-			MaxOpenConns: 20,
-			MaxIdleConns: 10,
+			// With 2 chains, each doing 4 parallel table inserts + watermarks + indexers
+			MaxOpenConns: 50,
+			MaxIdleConns: 20,
 			Debugf: func(format string, v ...interface{}) {
 				fmt.Printf(format, v)
 			},
