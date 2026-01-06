@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -28,9 +29,11 @@ func Connect() (driver.Conn, error) {
 				},
 			},
 			// Connection pool settings for high-throughput sync
-			// With 2 chains, each doing 4 parallel table inserts + watermarks + indexers
-			MaxOpenConns: 50,
-			MaxIdleConns: 20,
+			// Validator sync (353 subnets) + EVM sync (4 parallel tables) + P-Chain + indexers
+			MaxOpenConns:    100,
+			MaxIdleConns:    50,
+			DialTimeout:     30 * time.Second, // Wait longer for connection
+			ConnMaxLifetime: 1 * time.Hour,    // Recycle connections periodically
 			Debugf: func(format string, v ...interface{}) {
 				fmt.Printf(format, v)
 			},
