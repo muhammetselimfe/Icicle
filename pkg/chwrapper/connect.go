@@ -27,6 +27,9 @@ func Connect() (driver.Conn, error) {
 					{Name: "indexer-poc", Version: "0.1"},
 				},
 			},
+			// Connection pool settings for high-throughput sync
+			MaxOpenConns: 20,
+			MaxIdleConns: 10,
 			Debugf: func(format string, v ...interface{}) {
 				fmt.Printf(format, v)
 			},
