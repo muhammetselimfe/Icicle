@@ -64,15 +64,23 @@ func RunIngest(fast bool) {
 
 		wg.Add(1)
 		go func(s Syncer, chainID uint32, chainName string) {
-			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[Chain %d] PANIC RECOVERED: %v", chainID, r)
+				}
+				log.Printf("[Chain %d] Syncer goroutine exiting!", chainID)
+				wg.Done()
+			}()
 			if err := s.Start(); err != nil {
 				log.Printf("Failed to start syncer for chain %d (%s): %v", chainID, chainName, err)
 			}
 			s.Wait()
+			log.Printf("[Chain %d] Wait() returned - syncer stopped", chainID)
 		}(syncer, cfg.ChainID, cfg.Name)
 
 		log.Printf("Started syncer for chain %d (%s - %s)", cfg.ChainID, cfg.Name, cfg.VM)
 	}
 
 	wg.Wait()
+	log.Println("All syncers stopped - RunIngest() returning")
 }
