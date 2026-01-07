@@ -2,7 +2,10 @@ package main
 
 import (
 	"icicle/cmd"
+	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -10,6 +13,15 @@ import (
 
 func main() {
 	_ = godotenv.Load()
+
+	// Catch signals and log them before exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGPIPE)
+	go func() {
+		sig := <-sigChan
+		log.Printf("SIGNAL RECEIVED: %v - shutting down", sig)
+		os.Exit(1)
+	}()
 
 	root := &cobra.Command{Use: "clickhouse-ingest"}
 
