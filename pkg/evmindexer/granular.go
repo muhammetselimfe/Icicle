@@ -2,6 +2,7 @@ package evmindexer
 
 import (
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -30,8 +31,7 @@ func (r *IndexRunner) processGranularMetrics() {
 			// Run metric
 			start := time.Now()
 			if err := r.runGranularMetric(metricFile, granularity, periods); err != nil {
-				fmt.Printf("[Chain %d] FATAL: Failed to run %s (%s): %v\n", r.chainId, indexerName, granularity, err)
-				panic(err)
+				log.Fatalf("[Chain %d] FATAL: Failed to run %s (%s): %v", r.chainId, indexerName, granularity, err)
 			}
 			elapsed := time.Since(start)
 			fmt.Printf("[Chain %d] %s (%s) - processed %d periods - time taken: %s\n",
@@ -40,8 +40,7 @@ func (r *IndexRunner) processGranularMetrics() {
 			// Update watermark
 			watermark.LastPeriod = periods[len(periods)-1]
 			if err := r.saveWatermarkWithGranularity(indexerName, granularity, watermark); err != nil {
-				fmt.Printf("[Chain %d] FATAL: Failed to save watermark for %s (%s): %v\n", r.chainId, indexerName, granularity, err)
-				panic(err)
+				log.Fatalf("[Chain %d] FATAL: Failed to save watermark for %s (%s): %v", r.chainId, indexerName, granularity, err)
 			}
 		}
 	}

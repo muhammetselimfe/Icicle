@@ -2,6 +2,7 @@ package evmindexer
 
 import (
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -38,8 +39,7 @@ func (r *IndexRunner) processIncrementalBatch() bool {
 			// Run indexer for the batch
 			start := time.Now()
 			if err := r.runIncrementalIndexer(indexerFile, fromBlock, toBlock); err != nil {
-				fmt.Printf("[Chain %d] FATAL: Failed to run %s: %v\n", r.chainId, indexerName, err)
-				panic(err)
+				log.Fatalf("[Chain %d] FATAL: Failed to run %s: %v", r.chainId, indexerName, err)
 			}
 			elapsed := time.Since(start)
 
@@ -48,8 +48,7 @@ func (r *IndexRunner) processIncrementalBatch() bool {
 
 			// Save watermark to DB
 			if err := r.saveWatermark(indexerName, watermark); err != nil {
-				fmt.Printf("[Chain %d] FATAL: Failed to save watermark for %s: %v\n", r.chainId, indexerName, err)
-				panic(err)
+				log.Fatalf("[Chain %d] FATAL: Failed to save watermark for %s: %v", r.chainId, indexerName, err)
 			}
 
 			// Log the batch processing
