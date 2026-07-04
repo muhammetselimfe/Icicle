@@ -241,6 +241,13 @@ func (vs *ValidatorSyncer) syncOnce(ctx context.Context) error {
 		slog.Warn("Failed to update per-validator fee stats", "error", err)
 	}
 
+	// Step 12: Take today's validator-count snapshot if not yet taken (cheap
+	// no-op on repeat cycles within the same day). Keeps the historical
+	// timeseries (validator_count_snapshots) current after the one-time backfill.
+	if err := SampleValidatorCountsToday(ctx, vs.conn, vs.fetcher, vs.config.PChainID); err != nil {
+		slog.Warn("Failed to sample daily validator counts", "error", err)
+	}
+
 	duration := time.Since(startTime)
 	slog.Info("Validator state sync completed", "total_validators", totalValidators, "primary_network", primaryValidatorCount, "l1_validators", l1ValidatorCount, "l1_subnets", len(l1Subnets), "regular_validators", regularValidatorCount, "regular_subnets", len(regularSubnets), "duration", duration)
 

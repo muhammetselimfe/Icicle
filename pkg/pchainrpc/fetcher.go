@@ -1086,6 +1086,53 @@ func (f *Fetcher) GetCurrentValidators(ctx context.Context, subnetID string) (*G
 	return nil, fmt.Errorf("failed to get current validators for subnet %s after %d retries: %w", subnetID, f.maxRetries, lastErr)
 }
 
+// ValidatorAtInfo is one entry of platform.getValidatorsAt, keyed by NodeID.
+// publicKey is null for pre-BLS (Apricot-era) validators.
+type ValidatorAtInfo struct {
+	PublicKey *string `json:"publicKey"`
+	Weight    string  `json:"weight"`
+}
+
+// GetValidatorsAt returns the validator set of subnetID at the given P-Chain
+// height, as a map keyed by NodeID. The node serves this from its retained
+// validator diffs (back to ~genesis for the Primary Network and across the
+// full L1 lifetime for subnets), so len(result) is the exact active validator
+// count as of that height - no reconstruction needed. Returns an empty map
+// for heights before the subnet existed.
+func (f *Fetcher) GetValidatorsAt(ctx context.Context, subnetID string, height uint64) (map[string]ValidatorAtInfo, error) {
+	params := map[string]interface{}{
+		"height":   height,
+		"subnetID": subnetID,
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := f.retryDelay * time.Duration(1<<uint(attempt-1))
+			if delay > 10*time.Second {
+				delay = 10 * time.Second
+			}
+			slog.Warn("GetValidatorsAt failed, retrying", "subnet_id", subnetID, "height", height, "error", lastErr, "attempt", attempt, "max_retries", f.maxRetries, "delay", delay)
+			time.Sleep(delay)
+		}
+
+		var response map[string]ValidatorAtInfo
+		err := f.client.Requester.SendRequest(
+			ctx,
+			"platform.getValidatorsAt",
+			params,
+			&response,
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return response, nil
+	}
+
+	return nil, fmt.Errorf("failed to get validators at height %d for subnet %s after %d retries: %w", height, subnetID, f.maxRetries, lastErr)
+}
+
 // BlockchainInfo represents a blockchain returned by platform.getBlockchains
 type BlockchainInfo struct {
 	ID       string `json:"id"`

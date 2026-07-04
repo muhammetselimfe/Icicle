@@ -497,3 +497,19 @@ ORDER BY chain_id;
 
 -- Migrate existing chain_risk deployments to add manager_location (idempotent, no-op on fresh installs)
 ALTER TABLE chain_risk ADD COLUMN IF NOT EXISTS manager_location LowCardinality(String) DEFAULT 'unknown';
+
+-- Validator count snapshots - exact active validator counts per subnet at a
+-- historical P-Chain height, sampled via platform.getValidatorsAt (the node's
+-- authoritative validator diffs, not a reconstruction). Backfilled once via the
+-- validator-backfill command and kept current by a daily sample from the
+-- validator syncer. ReplacingMergeTree keyed by (subnet, date) so re-running a
+-- backfill replaces rather than duplicates - fully idempotent.
+CREATE TABLE IF NOT EXISTS validator_count_snapshots (
+    snapshot_date Date,  -- The sample date (height resolved as of end of this day UTC)
+    subnet_id String,  -- Primary Network = 11111111111111111111111111111111LpoYY, else the L1 subnet ID (CB58)
+    p_chain_height UInt64,  -- P-Chain height the sample was taken at
+    validator_count UInt32,  -- Exact active validator count at that height
+    p_chain_id UInt32,  -- Which P-chain instance (mainnet vs testnet)
+    sampled_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(sampled_at)
+ORDER BY (p_chain_id, subnet_id, snapshot_date);

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -104,6 +105,112 @@ func (s *Server) handleSubnetTimeline(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w, err.Error())
 			return
 		}
+		points = append(points, p)
+	}
+	if err := rows.Err(); err != nil {
+		writeInternalError(w, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, Response{Data: points})
+}
+
+// ValidatorCountPoint is one sampled point of the historical validator-count
+// series. Counts are exact snapshots of the active validator sets (sampled
+// on-chain via platform.getValidatorsAt), not reconstructions.
+type ValidatorCountPoint struct {
+	Period  time.Time `json:"period"`
+	Primary uint64    `json:"primary" example:"1205"` // Primary Network validators
+	L1      uint64    `json:"l1" example:"898"`       // Sum across all L1 subnets
+	Total   uint64    `json:"total" example:"2103"`   // Primary + L1
+}
+
+// handleValidatorTimeseries serves the historical active-validator counts from
+// validator_count_snapshots. History is backfilled monthly from mainnet launch
+// (2020-10) and sampled daily going forward, so interval=day returns whatever
+// sample density exists per period (no interpolation).
+// @Summary Get historical validator counts
+// @Description Exact active validator counts over time (Primary Network and L1s), sampled from on-chain validator sets. Monthly from 2020-10, daily from mid-2026. Oldest first.
+// @Tags Data - P-Chain
+// @Produce json
+// @Param interval query string false "Aggregation interval: month (default) or day. Month returns the last sample of each month."
+// @Param from query string false "Start date (YYYY-MM-DD)"
+// @Param to query string false "End date (YYYY-MM-DD)"
+// @Success 200 {object} Response{data=[]ValidatorCountPoint}
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/data/pchain/validators/timeseries [get]
+func (s *Server) handleValidatorTimeseries(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	interval := r.URL.Query().Get("interval")
+	var periodExpr string
+	switch interval {
+	case "", "month":
+		periodExpr = "toStartOfMonth(snapshot_date)"
+	case "day":
+		periodExpr = "snapshot_date"
+	default:
+		writeAPIError(w, http.StatusBadRequest, ErrInvalidParameter, "interval must be 'day' or 'month'")
+		return
+	}
+
+	where := "p_chain_id = 0"
+	args := []interface{}{}
+	if from := r.URL.Query().Get("from"); from != "" {
+		t, err := time.Parse("2006-01-02", from)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, ErrInvalidParameter, "from must be YYYY-MM-DD")
+			return
+		}
+		where += " AND snapshot_date >= ?"
+		args = append(args, t)
+	}
+	if to := r.URL.Query().Get("to"); to != "" {
+		t, err := time.Parse("2006-01-02", to)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, ErrInvalidParameter, "to must be YYYY-MM-DD")
+			return
+		}
+		where += " AND snapshot_date <= ?"
+		args = append(args, t)
+	}
+
+	// Inner query: last sample per (period, subnet) - with monthly history a
+	// month has one sample, with daily sampling the month's freshest wins.
+	// Outer: split Primary vs L1 per period.
+	query := fmt.Sprintf(`
+		SELECT
+			period,
+			toUInt64(sumIf(cnt, subnet_id = '%s'))  AS primary_count,
+			toUInt64(sumIf(cnt, subnet_id != '%s')) AS l1_count
+		FROM (
+			SELECT %s AS period, subnet_id, argMax(validator_count, snapshot_date) AS cnt
+			FROM validator_count_snapshots FINAL
+			WHERE %s
+			GROUP BY period, subnet_id
+		)
+		GROUP BY period
+		ORDER BY period ASC
+	`, primaryNetworkSubnetID, primaryNetworkSubnetID, periodExpr, where)
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		writeInternalError(w, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	points := []ValidatorCountPoint{}
+	for rows.Next() {
+		var p ValidatorCountPoint
+		var period time.Time
+		if err := rows.Scan(&period, &p.Primary, &p.L1); err != nil {
+			writeInternalError(w, err.Error())
+			return
+		}
+		p.Period = period
+		p.Total = p.Primary + p.L1
 		points = append(points, p)
 	}
 	if err := rows.Err(); err != nil {

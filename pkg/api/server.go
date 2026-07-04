@@ -186,6 +186,7 @@ func (s *Server) registerRoutes(cfg Config) {
 	// P-Chain Overview, timeline & blocks
 	s.router.HandleFunc("GET /api/v1/data/pchain/stats", s.handlePChainStats)
 	s.router.HandleFunc("GET /api/v1/data/pchain/subnet-timeline", s.handleSubnetTimeline)
+	s.router.HandleFunc("GET /api/v1/data/pchain/validators/timeseries", s.handleValidatorTimeseries)
 	s.router.HandleFunc("GET /api/v1/data/pchain/blocks", s.handleListPChainBlocks)
 	s.router.HandleFunc("GET /api/v1/data/pchain/blocks/{number}", s.handleGetPChainBlock)
 

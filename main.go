@@ -261,6 +261,21 @@ func main() {
 	fixturesCmd.Flags().String("protocol", "", "Also emit a protocol-scoped fixture preferring a CL route (e.g. benqi)")
 	fixturesCmd.Flags().Uint64("min-steal", 1, "Protocol fixture: minimum steal_time (blocks) so the case is fork-replayable")
 
+	validatorBackfillCmd := &cobra.Command{
+		Use:   "validator-backfill",
+		Short: "Backfill historical validator counts via platform.getValidatorsAt (one-time, idempotent)",
+		Run: func(command *cobra.Command, args []string) {
+			var opts cmd.ValidatorBackfillOptions
+			opts.From, _ = command.Flags().GetString("from")
+			opts.To, _ = command.Flags().GetString("to")
+			opts.Interval, _ = command.Flags().GetString("interval")
+			cmd.RunValidatorBackfill(ctx, opts)
+		},
+	}
+	validatorBackfillCmd.Flags().String("from", "", "Start date YYYY-MM-DD (default 2020-10-01)")
+	validatorBackfillCmd.Flags().String("to", "", "End date YYYY-MM-DD (default today)")
+	validatorBackfillCmd.Flags().String("interval", "month", "Sample interval: day, week, or month")
+
 	root.AddCommand(
 		ingestCmd,
 		apiCmd,
@@ -269,6 +284,7 @@ func main() {
 		stealtimeCmd,
 		replayCmd,
 		fixturesCmd,
+		validatorBackfillCmd,
 		&cobra.Command{
 			Use:   "cache",
 			Short: "Fill RPC cache at max speed (no ClickHouse)",
