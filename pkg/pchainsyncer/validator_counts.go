@@ -16,9 +16,12 @@ import (
 // PrimaryNetworkSubnetID is the Primary Network's subnet ID on mainnet.
 const PrimaryNetworkSubnetID = "11111111111111111111111111111111LpoYY"
 
-// sampleConcurrency caps parallel getValidatorsAt calls against the node so a
-// backfill can't starve the indexer's RPC path.
-const sampleConcurrency = 8
+// DefaultSampleConcurrency caps parallel getValidatorsAt calls against the
+// node. Deep-history heights (2020-2022, ~20M+ blocks behind tip) force the
+// node to rebuild ancient validator sets from its diffs, which is expensive -
+// 8 of those in parallel made the node shed all connections and fail health
+// checks (2026-07-04). Keep this low: samples at or near tip are cheap anyway.
+const DefaultSampleConcurrency = 2
 
 // subnetWindow is an L1 subnet and the time it was converted, used to skip
 // getValidatorsAt calls at heights before the subnet existed.
@@ -44,10 +47,13 @@ type countRow struct {
 //
 // Per-subnet RPC failures are logged and skipped (absent row, not a fake
 // zero) so a rerun can fill gaps. Returns an error only when nothing could be
-// sampled at all.
-func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *pchainrpc.Fetcher, pchainID uint32, dates []time.Time) error {
+// sampled at all. concurrency <= 0 falls back to DefaultSampleConcurrency.
+func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *pchainrpc.Fetcher, pchainID uint32, dates []time.Time, concurrency int) error {
 	if len(dates) == 0 {
 		return nil
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultSampleConcurrency
 	}
 
 	subnets, err := loadL1SubnetWindows(ctx, conn, pchainID)
@@ -63,7 +69,7 @@ func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *p
 		failed  int
 	)
 
-	sem := make(chan struct{}, sampleConcurrency)
+	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
 	for _, date := range dates {
@@ -143,7 +149,9 @@ func SampleValidatorCountsToday(ctx context.Context, conn clickhouse.Conn, fetch
 		return nil
 	}
 
-	return SampleValidatorCounts(ctx, conn, fetcher, pchainID, []time.Time{today})
+	// Today's sample reads at (near) tip, which is cheap for the node - but a
+	// higher fan-out buys little for 278 calls, so reuse the safe default.
+	return SampleValidatorCounts(ctx, conn, fetcher, pchainID, []time.Time{today}, DefaultSampleConcurrency)
 }
 
 // loadL1SubnetWindows returns all known L1 subnets with their conversion time.

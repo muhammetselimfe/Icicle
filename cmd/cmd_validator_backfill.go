@@ -15,9 +15,10 @@ import (
 // ValidatorBackfillOptions configures the one-time historical backfill of
 // validator_count_snapshots.
 type ValidatorBackfillOptions struct {
-	From     string // start date, YYYY-MM-DD (default: mainnet launch month)
-	To       string // end date, YYYY-MM-DD (default: today)
-	Interval string // day | week | month
+	From        string // start date, YYYY-MM-DD (default: mainnet launch month)
+	To          string // end date, YYYY-MM-DD (default: today)
+	Interval    string // day | week | month
+	Concurrency int    // parallel getValidatorsAt calls (deep history is expensive for the node)
 }
 
 // RunValidatorBackfill samples exact historical validator counts (Primary
@@ -63,10 +64,19 @@ func RunValidatorBackfill(ctx context.Context, opts ValidatorBackfillOptions) {
 		"to", dates[len(dates)-1].Format("2006-01-02"),
 		"interval", opts.Interval,
 		"samples", len(dates),
+		"concurrency", opts.Concurrency,
 		"rpc", pcfg.RpcURL)
 
+	// Sample newest-first: recent heights are cheap for the node (at or near
+	// tip) while 2020-2022 heights force expensive validator-diff rebuilds.
+	// This way the valuable modern data lands first and an interrupted run
+	// still leaves a usable series.
+	for i, j := 0, len(dates)-1; i < j; i, j = i+1, j-1 {
+		dates[i], dates[j] = dates[j], dates[i]
+	}
+
 	start := time.Now()
-	if err := pchainsyncer.SampleValidatorCounts(ctx, conn, fetcher, pcfg.ChainID, dates); err != nil {
+	if err := pchainsyncer.SampleValidatorCounts(ctx, conn, fetcher, pcfg.ChainID, dates, opts.Concurrency); err != nil {
 		log.Fatalf("Backfill failed: %v", err)
 	}
 	slog.Info("Validator count backfill complete", "elapsed", time.Since(start))

@@ -269,12 +269,14 @@ func main() {
 			opts.From, _ = command.Flags().GetString("from")
 			opts.To, _ = command.Flags().GetString("to")
 			opts.Interval, _ = command.Flags().GetString("interval")
+			opts.Concurrency, _ = command.Flags().GetInt("concurrency")
 			cmd.RunValidatorBackfill(ctx, opts)
 		},
 	}
 	validatorBackfillCmd.Flags().String("from", "", "Start date YYYY-MM-DD (default 2020-10-01)")
 	validatorBackfillCmd.Flags().String("to", "", "End date YYYY-MM-DD (default today)")
 	validatorBackfillCmd.Flags().String("interval", "month", "Sample interval: day, week, or month")
+	validatorBackfillCmd.Flags().Int("concurrency", 2, "Parallel getValidatorsAt calls (keep low - deep history is expensive for the node)")
 
 	root.AddCommand(
 		ingestCmd,
