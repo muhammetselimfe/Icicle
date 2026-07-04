@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"icicle/pkg/chwrapper"
 	"icicle/pkg/pchainrpc"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -281,6 +282,8 @@ func (vs *ValidatorSyncer) discoverL1Subnets(ctx context.Context) ([]ids.ID, err
 
 // discoverRegularSubnets discovers legacy subnets from the subnets table
 func (vs *ValidatorSyncer) discoverRegularSubnets(ctx context.Context) ([]ids.ID, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	query := `
 		SELECT DISTINCT subnet_id
 		FROM subnets FINAL

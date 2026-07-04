@@ -8,7 +8,15 @@ import (
 	"log"
 	"log/slog"
 	"sync"
+	"time"
 )
+
+// ingestShutdownGrace bounds how long we wait for syncers to stop gracefully
+// before exiting anyway. Kept below systemd's default TimeoutStopSec (90s) so a
+// wedged ClickHouse pool can't make `systemctl restart` hang for the full
+// timeout: we exit cleanly and the restart is fast (writes are idempotent and
+// resume from the watermark).
+const ingestShutdownGrace = 30 * time.Second
 
 func RunIngest(ctx context.Context, fast bool) {
 	if fast {
@@ -94,11 +102,23 @@ func RunIngest(ctx context.Context, fast bool) {
 	<-ctx.Done()
 	slog.Info("Shutdown signal received - stopping all syncers")
 
-	// Stop all syncers gracefully
-	for _, s := range syncers {
-		s.Stop()
-	}
+	// Stop all syncers gracefully, but under an overall deadline. A wedged
+	// ClickHouse pool can make a syncer's final flush block, and without a cap
+	// the whole stop sequence hangs until systemd SIGKILLs us. Bounding it lets
+	// the process exit promptly instead (see ingestShutdownGrace).
+	stopped := make(chan struct{})
+	go func() {
+		for _, s := range syncers {
+			s.Stop()
+		}
+		wg.Wait()
+		close(stopped)
+	}()
 
-	wg.Wait()
-	slog.Info("All syncers stopped - RunIngest() returning")
+	select {
+	case <-stopped:
+		slog.Info("All syncers stopped - RunIngest() returning")
+	case <-time.After(ingestShutdownGrace):
+		slog.Warn("Shutdown timed out waiting for syncers, exiting anyway", "grace", ingestShutdownGrace)
+	}
 }

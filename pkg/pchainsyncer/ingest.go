@@ -194,6 +194,8 @@ type L1Subnet struct {
 
 // InsertL1Subnets inserts or updates L1 subnet records
 func InsertL1Subnets(ctx context.Context, conn clickhouse.Conn, subnets []L1Subnet) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(subnets) == 0 {
 		return nil
 	}
@@ -226,6 +228,8 @@ func InsertL1Subnets(ctx context.Context, conn clickhouse.Conn, subnets []L1Subn
 
 // InsertValidatorStates inserts or updates validator state records
 func InsertValidatorStates(ctx context.Context, conn clickhouse.Conn, pchainID uint32, states []*pchainrpc.ValidatorState) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(states) == 0 {
 		return nil
 	}
@@ -264,6 +268,8 @@ func InsertValidatorStates(ctx context.Context, conn clickhouse.Conn, pchainID u
 // MarkInactiveValidators marks validators as inactive if they are no longer in the current RPC response.
 // This handles validators whose staking period has ended and are no longer returned by getCurrentValidators.
 func MarkInactiveValidators(ctx context.Context, conn clickhouse.Conn, pchainID uint32, subnetID string, activeValidationIDs []string) error {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	if len(activeValidationIDs) == 0 {
 		return nil
 	}
@@ -357,6 +363,8 @@ func MarkInactiveValidators(ctx context.Context, conn clickhouse.Conn, pchainID 
 
 // GetL1Subnets queries ClickHouse for all L1 subnets to monitor
 func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]ids.ID, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	query := `
 		SELECT DISTINCT subnet_id
 		FROM l1_subnets
@@ -393,6 +401,8 @@ func GetL1Subnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([
 // DiscoverL1SubnetsFromTransactions scans p_chain_txs for ConvertSubnetToL1 and TransformSubnet transactions
 // and returns L1 subnet information
 func DiscoverL1SubnetsFromTransactions(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1Subnet, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// We also look for TransformSubnet (which creates elastic subnets) as they are effectively L1s
 	// or at least have validators we want to track.
 	query := `
@@ -504,6 +514,8 @@ type SubnetChain struct {
 // DiscoverAllSubnets scans p_chain_txs for all subnet-related transactions
 // and returns a unified view of all subnets with their current status
 func DiscoverAllSubnets(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]Subnet, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// Map of subnet_id -> Subnet
 	subnetsMap := make(map[ids.ID]*Subnet)
 
@@ -682,6 +694,8 @@ func DiscoverAllSubnets(ctx context.Context, conn clickhouse.Conn, pchainID uint
 // DiscoverSubnetChains scans p_chain_txs for CreateChain transactions.
 // The tx_id of a CreateChainTx IS the blockchain ID on Avalanche.
 func DiscoverSubnetChains(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]SubnetChain, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	query := `
 		SELECT
 			tx_id as chain_id,
@@ -764,6 +778,8 @@ func DiscoverSubnetChains(ctx context.Context, conn clickhouse.Conn, pchainID ui
 
 // InsertSubnets inserts or updates subnet records in the unified subnets table
 func InsertSubnets(ctx context.Context, conn clickhouse.Conn, subnets []Subnet) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(subnets) == 0 {
 		return nil
 	}
@@ -804,6 +820,8 @@ var AvalancheGenesisTime = time.Unix(1600714800, 0)
 
 // InsertPrimaryNetwork inserts the Primary Network as a special genesis subnet
 func InsertPrimaryNetwork(ctx context.Context, conn clickhouse.Conn, pchainID uint32) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	// Primary Network subnet ID (all 1s in CB58)
 	primarySubnetID := "11111111111111111111111111111111LpoYY"
 
@@ -846,6 +864,8 @@ func InsertPrimaryNetwork(ctx context.Context, conn clickhouse.Conn, pchainID ui
 
 // InsertPrimaryNetworkChains inserts C-Chain, X-Chain, and P-Chain
 func InsertPrimaryNetworkChains(ctx context.Context, conn clickhouse.Conn, pchainID uint32) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	primarySubnetID := "11111111111111111111111111111111LpoYY"
 
 	chains := []struct {
@@ -890,6 +910,8 @@ func InsertPrimaryNetworkChains(ctx context.Context, conn clickhouse.Conn, pchai
 
 // InsertSubnetChains inserts or updates subnet chain records
 func InsertSubnetChains(ctx context.Context, conn clickhouse.Conn, chains []SubnetChain) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(chains) == 0 {
 		return nil
 	}
@@ -992,6 +1014,8 @@ type L1FeeStats struct {
 
 // CalculateL1FeeStats calculates fee statistics for all L1 subnets
 func CalculateL1FeeStats(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1FeeStats, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// This query calculates fee stats using deposits, refunds, and current balances
 	query := `
 		WITH
@@ -1102,6 +1126,8 @@ func CalculateL1FeeStats(ctx context.Context, conn clickhouse.Conn, pchainID uin
 
 // InsertL1FeeStats inserts or updates L1 fee statistics
 func InsertL1FeeStats(ctx context.Context, conn clickhouse.Conn, stats []L1FeeStats) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(stats) == 0 {
 		return nil
 	}
@@ -1170,6 +1196,8 @@ type ConvertSubnetValidator struct {
 
 // DiscoverL1ValidatorHistory discovers all L1 validators from historical transactions
 func DiscoverL1ValidatorHistory(ctx context.Context, conn clickhouse.Conn, pchainID uint32) ([]L1ValidatorHistory, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// Get last processed block for incremental discovery
 	var lastProcessedBlock uint64
 	err := conn.QueryRow(ctx, `
@@ -1400,6 +1428,8 @@ func DiscoverL1ValidatorHistory(ctx context.Context, conn clickhouse.Conn, pchai
 
 // InsertL1ValidatorHistory inserts historical validator records
 func InsertL1ValidatorHistory(ctx context.Context, conn clickhouse.Conn, validators []L1ValidatorHistory) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(validators) == 0 {
 		return nil
 	}
@@ -1440,6 +1470,8 @@ func InsertL1ValidatorHistory(ctx context.Context, conn clickhouse.Conn, validat
 // BackfillValidatorStateFromHistory inserts history-discovered validators into l1_validator_state
 // so the API can query a single table. Only inserts validators not already present in state.
 func BackfillValidatorStateFromHistory(ctx context.Context, conn clickhouse.Conn, pchainID uint32, validators []L1ValidatorHistory) error {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	if len(validators) == 0 {
 		return nil
 	}
@@ -1528,6 +1560,8 @@ type L1ValidatorBalanceTx struct {
 // SyncL1ValidatorBalanceTxs syncs all balance-affecting transactions to the l1_validator_balance_txs table
 // This includes: ConvertSubnetToL1, RegisterL1Validator, and IncreaseL1ValidatorBalance transactions
 func SyncL1ValidatorBalanceTxs(ctx context.Context, conn clickhouse.Conn, pchainID uint32) error {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// Check last synced block
 	var lastSyncedBlock uint64
 	err := conn.QueryRow(ctx, `
@@ -1629,6 +1663,8 @@ func SyncL1ValidatorBalanceTxs(ctx context.Context, conn clickhouse.Conn, pchain
 
 // InsertL1ValidatorBalanceTxs inserts balance transactions into the table
 func InsertL1ValidatorBalanceTxs(ctx context.Context, conn clickhouse.Conn, txs []L1ValidatorBalanceTx) error {
+	ctx, cancel := chwrapper.WriteContext(ctx)
+	defer cancel()
 	if len(txs) == 0 {
 		return nil
 	}
@@ -1663,6 +1699,8 @@ func InsertL1ValidatorBalanceTxs(ctx context.Context, conn clickhouse.Conn, txs 
 
 // UpdatePerValidatorFeeStats calculates and updates fee statistics for each L1 validator
 func UpdatePerValidatorFeeStats(ctx context.Context, conn clickhouse.Conn, pchainID uint32) error {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// This query calculates per-validator fee stats and updates l1_validator_state
 	// We calculate: initial_deposit, total_topups, refund_amount, fees_paid
 	query := `
@@ -2050,6 +2088,8 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 // resolve these txs to a validator (and thus a subnet). Incremental: txs already
 // mapped are skipped, so the first run backfills all history.
 func SyncL1ValidatorWeightTxs(ctx context.Context, conn clickhouse.Conn, pchainID uint32) error {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	rows, err := conn.Query(ctx, `
 		SELECT tx_id, toString(tx_data.message) AS message, block_number, block_time
 		FROM p_chain_txs
@@ -2130,6 +2170,8 @@ func SyncL1ValidatorWeightTxs(ctx context.Context, conn clickhouse.Conn, pchainI
 // Uses: refund = total_deposits - fees_paid (based on time active and min fee rate)
 // disableTime is the block_time from the DisableL1Validator transaction
 func calculateRefundFromDeposits(ctx context.Context, conn clickhouse.Conn, validationID string, pchainID uint32, disableTime time.Time) (uint64, error) {
+	ctx, cancel := chwrapper.ReadContext(ctx)
+	defer cancel()
 	// Find the start time for this validation period
 	// If this validator was disabled before, the start time is the previous disable time
 	// (when it was re-activated by depositing more funds)
