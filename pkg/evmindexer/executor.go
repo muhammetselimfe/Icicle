@@ -7,13 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
-
-const queryTimeout = 5 * time.Minute
 
 // executeSQLFile reads and executes a SQL file with parameter substitution and binding
 func executeSQLFile(conn driver.Conn, sqlDir string, filename string, templateParams []struct{ key, value string }, bindParams map[string]interface{}) error {
@@ -46,7 +43,7 @@ func executeSQLFile(conn driver.Conn, sqlDir string, filename string, templatePa
 
 		// Execute statement with parameter binding, timeout, and retry logic
 		err = chwrapper.WithRetry(func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+			ctx, cancel := chwrapper.ReadContext(context.Background())
 			defer cancel()
 			return conn.Exec(ctx, sql, namedParams...)
 		})

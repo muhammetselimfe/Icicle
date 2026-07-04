@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"icicle/pkg/chwrapper"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -52,7 +53,11 @@ func NewTokenMetadataFetcher(chainID uint32, conn driver.Conn, rpcURL string) *T
 
 // FetchMissingMetadata finds tokens without metadata and fetches it
 func (f *TokenMetadataFetcher) FetchMissingMetadata(limit int) (int, error) {
-	ctx := context.Background()
+	// Bounded so the query-send can't block forever on a severed pooled
+	// connection and drain the shared pool (2026-07-04 stall). This heavy
+	// SELECT over erc20_balance_changes runs every 10s in the indexer loop.
+	ctx, cancel := chwrapper.ReadContext(context.Background())
+	defer cancel()
 
 	slog.Debug("Token metadata: checking for missing tokens", "chain_id", f.chainID)
 
@@ -317,7 +322,8 @@ func decodeString(hexData string) (string, error) {
 
 // insertMetadata batch inserts token metadata
 func (f *TokenMetadataFetcher) insertMetadata(metadata []TokenMetadata) error {
-	ctx := context.Background()
+	ctx, cancel := chwrapper.WriteContext(context.Background())
+	defer cancel()
 
 	batch, err := f.conn.PrepareBatch(ctx, `
 		INSERT INTO token_metadata (chain_id, token, name, symbol, decimals)

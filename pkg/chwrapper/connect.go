@@ -28,6 +28,17 @@ const (
 	// INSERT into a severed connection blocks forever and drains the pool. See
 	// WriteContext.
 	DefaultWriteTimeout = 120 * time.Second
+	// DefaultQueryTimeout bounds a whole read operation (query send + result
+	// stream) run through ReadContext. As with writes, clickhouse-go only
+	// installs a socket deadline on the query-send path when the operation's
+	// context carries one, so a read issued with a deadline-less context
+	// (context.Background) can block forever writing the query into a severed
+	// connection and leak the pooled conn — the same pool drain WriteContext
+	// prevents for inserts (2026-07-04 recurrence, via the token-metadata and
+	// incremental read paths). Kept well above the server max_execution_time
+	// (60s) so it never pre-empts a legitimately slow analytical read; it is
+	// purely a severed-socket backstop.
+	DefaultQueryTimeout = 300 * time.Second
 )
 
 // getEnvInt reads an integer from environment variable with a default value
@@ -113,5 +124,18 @@ func Connect() (driver.Conn, error) {
 // The timeout is configurable via CH_WRITE_TIMEOUT_SEC (default 120s).
 func WriteContext(parent context.Context) (context.Context, context.CancelFunc) {
 	sec := getEnvInt("CH_WRITE_TIMEOUT_SEC", int(DefaultWriteTimeout.Seconds()))
+	return context.WithTimeout(parent, time.Duration(sec)*time.Second)
+}
+
+// ReadContext derives a context with a bounded deadline for read/query
+// operations, mirroring WriteContext for the read path. A query issued with a
+// deadline-less context can block forever writing the query into a severed
+// connection and leak the pooled conn (see DefaultQueryTimeout); with a
+// deadline the socket watchdog closes the dead connection and the caller's
+// retry heals. Use for every SELECT/Query that runs on a background context.
+//
+// The timeout is configurable via CH_QUERY_TIMEOUT_SEC (default 300s).
+func ReadContext(parent context.Context) (context.Context, context.CancelFunc) {
+	sec := getEnvInt("CH_QUERY_TIMEOUT_SEC", int(DefaultQueryTimeout.Seconds()))
 	return context.WithTimeout(parent, time.Duration(sec)*time.Second)
 }

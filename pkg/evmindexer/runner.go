@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"icicle/pkg/chwrapper"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -50,7 +51,10 @@ func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string, startBlock 
 		if strings.TrimSpace(stmt) == "" {
 			continue
 		}
-		if err := conn.Exec(context.Background(), stmt); err != nil {
+		ctx, cancel := chwrapper.WriteContext(context.Background())
+		err := conn.Exec(ctx, stmt)
+		cancel()
+		if err != nil {
 			// Ignore "already exists" errors
 			if !strings.Contains(err.Error(), "already exists") {
 				return nil, fmt.Errorf("failed to create table from indexer_tables.sql: %w", err)
@@ -70,9 +74,12 @@ func NewIndexRunner(chainId uint32, conn driver.Conn, sqlDir string, startBlock 
 		) ENGINE = ReplacingMergeTree(computed_at)
 		ORDER BY (chain_id, token)
 	`
-	if err := conn.Exec(context.Background(), tokenMetadataSQL); err != nil {
-		if !strings.Contains(err.Error(), "already exists") {
-			return nil, fmt.Errorf("failed to create token_metadata table: %w", err)
+	ctxTM, cancelTM := chwrapper.WriteContext(context.Background())
+	errTM := conn.Exec(ctxTM, tokenMetadataSQL)
+	cancelTM()
+	if errTM != nil {
+		if !strings.Contains(errTM.Error(), "already exists") {
+			return nil, fmt.Errorf("failed to create token_metadata table: %w", errTM)
 		}
 	}
 

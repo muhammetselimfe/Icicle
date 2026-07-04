@@ -3,6 +3,7 @@ package evmindexer
 import (
 	"context"
 	"fmt"
+	"icicle/pkg/chwrapper"
 	"log/slog"
 	"time"
 )
@@ -26,7 +27,8 @@ func watermarkKey(indexerName, granularity string) string {
 
 // loadWatermarks loads all watermarks for this chain from DB into memory
 func (r *IndexRunner) loadWatermarks() error {
-	ctx := context.Background()
+	ctx, cancel := chwrapper.ReadContext(context.Background())
+	defer cancel()
 	query := `
 	SELECT indexer_name, granularity, last_period, last_block_num
 	FROM indexer_watermarks FINAL
@@ -92,7 +94,8 @@ func (r *IndexRunner) getWatermarkWithGranularity(indexerName string, granularit
 
 // saveWatermark saves watermark to DB (for incrementals)
 func (r *IndexRunner) saveWatermark(indexerName string, wm *Watermark) error {
-	ctx := context.Background()
+	ctx, cancel := chwrapper.WriteContext(context.Background())
+	defer cancel()
 	query := `
 	INSERT INTO indexer_watermarks (chain_id, indexer_name, granularity, last_period, last_block_num)
 	VALUES (?, ?, ?, ?, ?)`
@@ -102,7 +105,8 @@ func (r *IndexRunner) saveWatermark(indexerName string, wm *Watermark) error {
 
 // saveWatermarkWithGranularity saves watermark to DB for granular metrics
 func (r *IndexRunner) saveWatermarkWithGranularity(indexerName string, granularity string, wm *Watermark) error {
-	ctx := context.Background()
+	ctx, cancel := chwrapper.WriteContext(context.Background())
+	defer cancel()
 	query := `
 	INSERT INTO indexer_watermarks (chain_id, indexer_name, granularity, last_period, last_block_num)
 	VALUES (?, ?, ?, ?, ?)`
