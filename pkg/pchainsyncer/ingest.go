@@ -957,7 +957,12 @@ func BackfillSubnetChainsFromRPC(ctx context.Context, conn clickhouse.Conn, fetc
 		return 0, nil
 	}
 
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO subnet_chains (
+	// Bounded per-op: the GetBlockchains RPC above rides the parent ctx (it has
+	// its own HTTP timeout), but the insert needs a write deadline so a severed
+	// connection can't park this goroutine (see SyncL1ValidatorRefunds).
+	wctx, wcancel := chwrapper.WriteContext(ctx)
+	defer wcancel()
+	batch, err := conn.PrepareBatch(wctx, `INSERT INTO subnet_chains (
 		chain_id, subnet_id, chain_name, vm_id,
 		created_block, created_time, p_chain_id, last_updated
 	)`)
@@ -1898,7 +1903,14 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 		ORDER BY block_number ASC
 	`
 
-	rows, err := conn.Query(ctx, query, pchainID, pchainID)
+	// Bounded per-op (not function-level): the per-item RPC loop below can be
+	// legitimately slow, so only the DB operations carry deadlines. This is the
+	// function whose unbounded INSERT parked a pooled connection forever when a
+	// connection died mid-stream (2026-07-17, ATTEMPT_TO_READ_AFTER_EOF on
+	// l1_validator_refunds) and froze the validator syncer for 4 days.
+	qctx, qcancel := chwrapper.ReadContext(ctx)
+	defer qcancel()
+	rows, err := conn.Query(qctx, query, pchainID, pchainID)
 	if err != nil {
 		return fmt.Errorf("failed to query refund txs: %w", err)
 	}
@@ -1964,17 +1976,21 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 		// Get subnet_id and remaining_balance_owner from l1_validator_history (preferred)
 		// This works for disabled validators where RPC fails
 		var subnetID, refundAddress string
-		err := conn.QueryRow(ctx, `
+		hctx, hcancel := chwrapper.ReadContext(ctx)
+		err := conn.QueryRow(hctx, `
 			SELECT subnet_id, remaining_balance_owner FROM l1_validator_history FINAL
 			WHERE validation_id = ? AND p_chain_id = ?
 		`, refunds[i].ValidationID, pchainID).Scan(&subnetID, &refundAddress)
+		hcancel()
 		if err != nil || refundAddress == "" {
 			// Fall back to l1_validator_state for subnet_id if not found in history
 			if subnetID == "" {
-				err = conn.QueryRow(ctx, `
+				sctx, scancel := chwrapper.ReadContext(ctx)
+				err = conn.QueryRow(sctx, `
 					SELECT subnet_id FROM l1_validator_state FINAL
 					WHERE validation_id = ? AND p_chain_id = ?
 				`, refunds[i].ValidationID, pchainID).Scan(&subnetID)
+				scancel()
 				if err != nil {
 					slog.Warn("Could not find subnet for validation_id", "validation_id", refunds[i].ValidationID, "error", err)
 					continue
@@ -2011,8 +2027,11 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 		refunds[i].RefundAmount = refundAmount
 	}
 
-	// Insert refunds
-	batch, err := conn.PrepareBatch(ctx, `INSERT INTO l1_validator_refunds (
+	// Insert refunds. The write deadline is what lets a severed connection fail
+	// fast instead of blocking batch.Send forever (the 2026-07-17 park).
+	wctx, wcancel := chwrapper.WriteContext(ctx)
+	defer wcancel()
+	batch, err := conn.PrepareBatch(wctx, `INSERT INTO l1_validator_refunds (
 		tx_id, validation_id, subnet_id, refund_amount, refund_address, block_number, block_time, p_chain_id
 	)`)
 	if err != nil {
@@ -2054,10 +2073,12 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 			}
 			// Look up node_id for this validator
 			var nodeID string
-			_ = conn.QueryRow(ctx, `
+			nctx, ncancel := chwrapper.ReadContext(ctx)
+			_ = conn.QueryRow(nctx, `
 				SELECT node_id FROM l1_validator_state FINAL
 				WHERE validation_id = ? AND p_chain_id = ?
 			`, r.ValidationID, pchainID).Scan(&nodeID)
+			ncancel()
 
 			balanceTxs = append(balanceTxs, L1ValidatorBalanceTx{
 				ValidationID: r.ValidationID,
