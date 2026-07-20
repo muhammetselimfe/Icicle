@@ -48,6 +48,12 @@ type countRow struct {
 // Per-subnet RPC failures are logged and skipped (absent row, not a fake
 // zero) so a rerun can fill gaps. Returns an error only when nothing could be
 // sampled at all. concurrency <= 0 falls back to DefaultSampleConcurrency.
+//
+// Dates are processed one at a time and each date's rows are inserted as soon
+// as that date completes, so an interrupted run keeps everything it finished
+// (the first backfill attempt batched all inserts to the end and a Ctrl-C
+// threw away 25 minutes of successful samples). Sequential dates also keep
+// the load on the node to one date's fan-out at a time.
 func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *pchainrpc.Fetcher, pchainID uint32, dates []time.Time, concurrency int) error {
 	if len(dates) == 0 {
 		return nil
@@ -62,15 +68,7 @@ func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *p
 	}
 	slog.Info("Sampling validator counts", "dates", len(dates), "l1_subnets", len(subnets))
 
-	var (
-		mu      sync.Mutex
-		rows    []countRow
-		sampled int
-		failed  int
-	)
-
-	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
+	var sampled, failed, datesDone int
 
 	for _, date := range dates {
 		if ctx.Err() != nil {
@@ -95,10 +93,17 @@ func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *p
 			}
 		}
 
+		var (
+			mu   sync.Mutex
+			rows []countRow
+		)
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+
 		for _, subnetID := range targets {
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(date time.Time, subnetID string, height uint64) {
+			go func(subnetID string) {
 				defer wg.Done()
 				defer func() { <-sem }()
 
@@ -111,21 +116,26 @@ func SampleValidatorCounts(ctx context.Context, conn clickhouse.Conn, fetcher *p
 					return
 				}
 				rows = append(rows, countRow{date: date, subnetID: subnetID, height: height, count: uint32(len(validators))})
-				sampled++
-			}(date, subnetID, height)
+			}(subnetID)
 		}
-	}
-	wg.Wait()
+		wg.Wait()
 
-	if len(rows) == 0 {
+		if len(rows) == 0 {
+			continue
+		}
+		if err := insertValidatorCounts(ctx, conn, pchainID, rows); err != nil {
+			return fmt.Errorf("failed to insert validator counts for %s: %w", date.Format("2006-01-02"), err)
+		}
+		sampled += len(rows)
+		datesDone++
+		slog.Info("Sampled validator counts for date", "date", date.Format("2006-01-02"), "subnets", len(rows), "progress", fmt.Sprintf("%d/%d", datesDone, len(dates)))
+	}
+
+	if sampled == 0 {
 		return fmt.Errorf("no validator counts sampled (%d failures)", failed)
 	}
 
-	if err := insertValidatorCounts(ctx, conn, pchainID, rows); err != nil {
-		return fmt.Errorf("failed to insert validator counts: %w", err)
-	}
-
-	slog.Info("Validator count sampling complete", "sampled", sampled, "failed", failed, "dates", len(dates))
+	slog.Info("Validator count sampling complete", "sampled", sampled, "failed", failed, "dates_done", datesDone, "dates", len(dates))
 	return nil
 }
 
