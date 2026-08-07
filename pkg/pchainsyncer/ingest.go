@@ -159,6 +159,7 @@ func InsertPChainTxs(ctx context.Context, conn clickhouse.Conn, pchainID uint32,
 		if err != nil {
 			return fmt.Errorf("failed to prepare batch: %w", err)
 		}
+		defer func() { _ = batch.Abort() }()
 
 		for _, tx := range chunk {
 			err = batch.Append(
@@ -206,6 +207,7 @@ func InsertL1Subnets(ctx context.Context, conn clickhouse.Conn, subnets []L1Subn
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, subnet := range subnets {
@@ -241,6 +243,7 @@ func InsertValidatorStates(ctx context.Context, conn clickhouse.Conn, pchainID u
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, state := range states {
@@ -332,6 +335,7 @@ func MarkInactiveValidators(ctx context.Context, conn clickhouse.Conn, pchainID 
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch for inactive validators: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, v := range toDeactivate {
@@ -791,6 +795,7 @@ func InsertSubnets(ctx context.Context, conn clickhouse.Conn, subnets []Subnet) 
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, subnet := range subnets {
@@ -840,6 +845,7 @@ func InsertPrimaryNetwork(ctx context.Context, conn clickhouse.Conn, pchainID ui
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	err = batch.Append(
@@ -887,6 +893,7 @@ func InsertPrimaryNetworkChains(ctx context.Context, conn clickhouse.Conn, pchai
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, chain := range chains {
@@ -923,6 +930,7 @@ func InsertSubnetChains(ctx context.Context, conn clickhouse.Conn, chains []Subn
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, chain := range chains {
@@ -969,6 +977,7 @@ func BackfillSubnetChainsFromRPC(ctx context.Context, conn clickhouse.Conn, fetc
 	if err != nil {
 		return 0, fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	// Known non-application chains to skip
@@ -1145,6 +1154,7 @@ func InsertL1FeeStats(ctx context.Context, conn clickhouse.Conn, stats []L1FeeSt
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, s := range stats {
@@ -1446,6 +1456,7 @@ func InsertL1ValidatorHistory(ctx context.Context, conn clickhouse.Conn, validat
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, v := range validators {
@@ -1518,6 +1529,7 @@ func BackfillValidatorStateFromHistory(ctx context.Context, conn clickhouse.Conn
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	zeroTime := time.Unix(0, 0).UTC()
@@ -1681,6 +1693,7 @@ func InsertL1ValidatorBalanceTxs(ctx context.Context, conn clickhouse.Conn, txs 
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, tx := range txs {
 		err = batch.Append(
@@ -1772,6 +1785,7 @@ func UpdatePerValidatorFeeStats(ctx context.Context, conn clickhouse.Conn, pchai
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	updateCount := 0
@@ -2037,6 +2051,7 @@ func SyncL1ValidatorRefunds(ctx context.Context, conn clickhouse.Conn, fetcher *
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	insertCount := 0
 	for _, r := range refunds {
@@ -2175,6 +2190,7 @@ func SyncL1ValidatorWeightTxs(ctx context.Context, conn clickhouse.Conn, pchainI
 	if err != nil {
 		return fmt.Errorf("failed to prepare weight-txs batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 	for _, w := range wtxs {
 		if err := batch.Append(w.txID, w.validationID, w.nonce, w.weight, w.blockNumber, w.blockTime, pchainID); err != nil {
 			return fmt.Errorf("failed to append weight tx %s: %w", w.txID, err)

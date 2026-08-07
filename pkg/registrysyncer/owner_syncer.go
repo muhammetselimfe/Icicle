@@ -92,6 +92,7 @@ func SyncValidatorManagerOwners(ctx context.Context, conn driver.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, info := range l1s {
@@ -165,6 +166,7 @@ func SyncValidatorManagerOwners(ctx context.Context, conn driver.Conn) error {
 		if err != nil {
 			return fmt.Errorf("failed to prepare batch: %w", err)
 		}
+		defer func() { _ = batch2.Abort() }()
 
 		var updated2 int
 		for _, info := range noRpcL1s {

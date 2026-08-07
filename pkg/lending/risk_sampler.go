@@ -121,6 +121,7 @@ func (rs *RiskSampler) Sample(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, s := range snaps {
 		if err := batch.Append(

@@ -166,6 +166,7 @@ func (r *Runner) persist(ctx context.Context, s prefilter.Summary, cost prefilte
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	if err := batch.Append(
 		time.Now().UTC(), r.cfg.ChainID, complete, uint32(s.Total), uint32(s.Profitable),
 		uint32(s.ByReason[prefilter.ReasonProfitable]), uint32(s.ByReason[prefilter.ReasonDust]),

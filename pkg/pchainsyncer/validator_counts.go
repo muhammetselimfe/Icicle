@@ -221,6 +221,7 @@ func insertValidatorCounts(ctx context.Context, conn clickhouse.Conn, pchainID u
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	for _, r := range rows {
 		if err := batch.Append(r.date, r.subnetID, r.height, r.count, pchainID); err != nil {
 			return err

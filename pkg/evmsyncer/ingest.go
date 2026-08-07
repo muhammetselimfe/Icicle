@@ -176,6 +176,7 @@ func InsertBlocks(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
@@ -401,6 +402,7 @@ func InsertTransactions(ctx context.Context, conn clickhouse.Conn, chainID uint3
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
@@ -758,6 +760,7 @@ func InsertTraces(ctx context.Context, conn clickhouse.Conn, chainID uint32, blo
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block
@@ -898,6 +901,7 @@ func InsertLogs(ctx context.Context, conn clickhouse.Conn, chainID uint32, block
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, normalizedBlock := range filteredBlocks {
 		block := normalizedBlock.Block

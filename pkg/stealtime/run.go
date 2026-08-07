@@ -269,6 +269,7 @@ func persistAll(ctx context.Context, conn driver.Conn, chainID uint32, rows []re
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, r := range rows {
 		if err := batch.Append(

@@ -181,6 +181,7 @@ func (s *Store) UpsertAccounts(ctx context.Context, protocol Protocol, accounts 
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for acc, block := range accounts {
 		if err := batch.Append(s.chainID, string(protocol), addrBytes(acc), block, block, now); err != nil {
@@ -199,6 +200,7 @@ func (s *Store) UpsertExposure(ctx context.Context, protocol Protocol, exposures
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, e := range exposures {
 		if e.Asset == "" || normalizeAddress(e.Asset) == ZeroAddress {
@@ -351,6 +353,7 @@ func (s *Store) writePositions(ctx context.Context, healths []Health, tiers map[
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, h := range healths {
 		if !h.OK {
@@ -377,6 +380,7 @@ func (s *Store) writePositionAssets(ctx context.Context, healths []Health) error
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	any := false
 	for _, h := range healths {
@@ -405,6 +409,7 @@ func (s *Store) writeAlerts(ctx context.Context, alerts []Alert) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, a := range alerts {
 		if err := batch.Append(
@@ -429,6 +434,7 @@ func (s *Store) WriteAddresses(ctx context.Context, protocol Protocol, notes []V
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, n := range notes {
 		detail := n.Detail
@@ -449,6 +455,7 @@ func (s *Store) WriteParams(ctx context.Context, protocol Protocol, params []Ass
 	if err != nil {
 		return err
 	}
+	defer func() { _ = gb.Abort() }()
 	if err := gb.Append(s.chainID, string(protocol), globals.CloseFactorBps, globals.LiquidationIncentiveBps,
 		orZero(globals.SmallPositionBase), orZero(globals.BaseCurrencyUnit), time.Now().UTC()); err != nil {
 		return err
@@ -465,6 +472,7 @@ func (s *Store) WriteParams(ctx context.Context, protocol Protocol, params []Ass
 	if err != nil {
 		return err
 	}
+	defer func() { _ = pb.Abort() }()
 	now := time.Now().UTC()
 	for _, p := range params {
 		if err := pb.Append(

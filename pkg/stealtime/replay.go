@@ -263,6 +263,7 @@ func persistReplay(ctx context.Context, conn driver.Conn, cfg ReplayConfig, resu
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	now := time.Now().UTC()
 	for _, r := range results {
 		if err := batch.Append(

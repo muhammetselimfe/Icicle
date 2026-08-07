@@ -315,6 +315,7 @@ func (li *LiquidationIngester) persist(ctx context.Context, rows []LiquidationRo
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 	for _, r := range rows {
 		if err := batch.Append(
 			li.chainID, r.Protocol, r.Block, r.BlockTime, r.TxHash[:], r.LogIndex,

@@ -154,6 +154,7 @@ func insertRegistryData(ctx context.Context, conn clickhouse.Conn, registries []
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	for _, reg := range registries {

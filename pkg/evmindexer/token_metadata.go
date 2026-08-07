@@ -331,6 +331,7 @@ func (f *TokenMetadataFetcher) insertMetadata(metadata []TokenMetadata) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = batch.Abort() }()
 
 	for _, m := range metadata {
 		// Convert []byte to [20]byte for FixedString(20)

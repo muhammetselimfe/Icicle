@@ -134,6 +134,7 @@ func SyncChainRisk(ctx context.Context, conn driver.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare chain_risk batch: %w", err)
 	}
+	defer func() { _ = batch.Abort() }()
 
 	now := time.Now()
 	var resolved, poa, pos, onCChain, onSelf int
